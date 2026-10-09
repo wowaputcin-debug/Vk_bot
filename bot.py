@@ -13,19 +13,21 @@ vk_session = vk_api.VkApi(token=TOKEN)
 longpoll = VkLongPoll(vk_session)
 print("Бот готов и ждет сообщений!")
 
-# --- ФУНКЦИЯ ДЛЯ КЛАВИАТУРЫ ---
-def get_main_keyboard():
-    keyboard = VkKeyboard(one_time=False)
-    keyboard.add_button('🛒 Где заказать', color=VkKeyboardColor.PRIMARY)
-    keyboard.add_button('😋 Что вкуснее?', color=VkKeyboardColor.POSITIVE)
-    keyboard.add_line()
-    keyboard.add_button('🔥 Что чаще берут?', color=VkKeyboardColor.SECONDARY)
-    keyboard.add_button('🌐 Наш сайт', color=VkKeyboardColor.PRIMARY)
-    keyboard.add_line()
-    keyboard.add_button('✍️ Оставить отзыв', color=VkKeyboardColor.NEGATIVE)
-    return keyboard.get_keyboard()
+# --- СПИСОК БЛЮД ДЛЯ КОЛЕСА ФОРТУНЫ (Актуальные цены) ---
+DISHES = [
+    "Ролл Цыпа (378 ₽) — хит продаж! 🌯",
+    "Ролл Армянский (404 ₽) — с армянскими специями! 🌯",
+    "Mac & Cheese Фрайс (419 ₽) — сыр, рожки и фри! 🧀",
+    "Мак &Чизос (419 ₽) — мегасырный с читос! 🧀",
+    "Пицца Танос (1981 ₽) — для настоящих гурманов! 🍕",
+    "Курочка+подружка (1263 ₽) — идеальный комбо на двоих! 🍗",
+    "Баскет Пэли Мэни Пакьяо (631 ₽) — азиатские пельмени! 🥟",
+    "10 крыльев (899 ₽) — хрустящие, в оригинальной панировке! 🍗",
+    "Пицца Цезарь Power (549 ₽) — 25 см сытного удовольствия! 🍕",
+    "Комбо набор #1 (1643 ₽) — крылья, голени и фри! 🍟"
+]
 
-# --- БАЗА ЗНАНИЙ (УМНЫЕ ОТВЕТЫ) ---
+# --- ФРАЗЫ ДЛЯ РАЗНЫХ СЛУЧАЕВ ---
 HELLO_PHRASES = [
     'Здарова! 👋 Голоден? Я помогу выбрать, что заказать. Жми кнопки ниже!',
     'Привет! 👋 Я бот-помощник «Курочка рядом». Что будем кушать сегодня? 😋',
@@ -40,7 +42,31 @@ UNKNOWN_PHRASES = [
     'Не, ну я конечно умный, но не настолько. 😂 Давай лучше закажем что-нибудь вкусное!'
 ]
 
-# --- ЛОГИКА ОБРАБОТКИ ---
+FORTUNE_PHRASES = [
+    "Крутим барабан... 🎰 Выпало:",
+    "Фортуна улыбается тебе! 😉 Сегодня твой выбор:",
+    "Рандом решил за тебя! 🎲 Бери это:",
+    "Вот что советует наша курочка: 🐔",
+    "Огонь! 🔥 Попробуй сегодня это:"
+]
+
+# --- ФУНКЦИЯ ДЛЯ КЛАВИАТУРЫ ---
+def get_main_keyboard():
+    keyboard = VkKeyboard(one_time=False)
+    keyboard.add_button('🛒 Где заказать', color=VkKeyboardColor.PRIMARY)
+    keyboard.add_button('😋 Что вкуснее?', color=VkKeyboardColor.POSITIVE)
+    
+    keyboard.add_line()
+    keyboard.add_button('🔥 Что чаще берут?', color=VkKeyboardColor.SECONDARY)
+    keyboard.add_button('🎲 Колесо фортуны', color=VkKeyboardColor.POSITIVE)
+    
+    keyboard.add_line()
+    keyboard.add_button('🌐 Наш сайт', color=VkKeyboardColor.PRIMARY)
+    keyboard.add_button('✍️ Оставить отзыв', color=VkKeyboardColor.NEGATIVE)
+    
+    return keyboard.get_keyboard()
+
+# --- ОСНОВНАЯ ЛОГИКА ---
 for event in longpoll.listen():
     if event.type == VkEventType.MESSAGE_NEW and event.to_me:
         msg = event.text.lower()
@@ -63,19 +89,19 @@ for event in longpoll.listen():
                 'random_id': 0
             })
             
-        # 3. Что вкуснее? (Умный ответ)
+        # 3. Что вкуснее? (ОБНОВЛЕНО)
         elif msg == '😋 что вкуснее?' or 'вкусн' in msg or 'посовет' in msg:
             vk_session.method('messages.send', {
                 'user_id': user_id,
-                'message': 'Если хочешь попробовать что-то новое, рекомендую:\n1. Ролл Мак Чиз (399 ₽) — сырный взрыв! 🧀\n2. Mac & Cheese Фрайс (419 ₽) — сыр, рожки и фри, идеально!\n3. Пицца «Пипец 1992» (2000 ₽) — для большой компании! 🍕\nОни просто огонь! 🔥',
+                'message': 'Если хочешь попробовать что-то новое, рекомендую:\n1. Комбо курочка+подружка (1263 ₽) — взрыв курицы! 🍗\n2. Mac & Cheese Фрайс (419 ₽) — сыр, рожки и фри, идеально! 🧀\n3. Баскет Пэли мэни пакьяо (631 ₽) — для Всех! 🥟\nОни просто огонь! 🔥',
                 'random_id': 0
             })
 
-        # 4. Что чаще берут? (Умный ответ)
+        # 4. Что чаще берут? (ОБНОВЛЕНО)
         elif msg == '🔥 что чаще берут?' or 'хит' in msg or 'популярн' in msg or 'берут' in msg:
             vk_session.method('messages.send', {
                 'user_id': user_id,
-                'message': 'Наши бестселлеры, которые заказывают чаще всего:\n🥇 Ролл Мак Чиз (399 ₽) — хит продаж!\n🥈 Курочка+подружка (990 ₽) — идеальный комбо-набор на двоих.\n🥉 Пицца «Мортальный комбо» (2000 ₽) — для настоящих гурманов.\nПопробуй, не пожалеешь! 😉',
+                'message': 'Наши бестселлеры, которые заказывают чаще всего:\n🥇 Цыпа (378 ₽) — хит продаж!\n🥈 Курочка+друг (1263 ₽) — идеальный комбо-набор на двоих.\n🥉 Пицца «ТАНОС» (1981 ₽) — для настоящих гурманов.\nПопробуй, не пожалеешь! 😉',
                 'random_id': 0
             })
             
@@ -91,31 +117,47 @@ for event in longpoll.listen():
         elif msg == '✍️ оставить отзыв' or 'отзыв' in msg:
             vk_session.method('messages.send', {
                 'user_id': user_id,
-                'message': 'Нам очень важно твое мнение! ❤️ Пожалуйста, напиши свой отзыв или предложение мне в личные сообщения:\n👉 https://vk.com/write58971558\n\nЯ всё прочитаю и обязательно отвечу! 😉',
+                'message': 'Нам очень важно твое мнение! ❤️ Пожалуйста, напиши свой отзыв или предложение мне в личные сообщения:\n👉 https://vk.com/writeТВОЙ_ID\n\nЯ всё прочитаю и обязательно отвечу! 😉',
+                'random_id': 0
+            })
+
+        # 7. КОЛЕСО ФОРТУНЫ
+        elif msg == '🎲 колесо фортуны' or 'колесо' in msg or 'не знаю' in msg or 'рандом' in msg:
+            dish = random.choice(DISHES)
+            phrase = random.choice(FORTUNE_PHRASES)
+            vk_session.method('messages.send', {
+                'user_id': user_id,
+                'message': f'{phrase}\n\n{dish}\n\nЗаказать можно тут: https://курлайк.рф',
                 'random_id': 0
             })
         
-        # 7. Умный поиск по меню (если написали просто слово)
+        # 8. Умный поиск по меню (ОБНОВЛЕНО)
         elif 'ролл' in msg:
             vk_session.method('messages.send', {
                 'user_id': user_id,
-                'message': 'У нас есть офигенные роллы! 🌯\nПопробуй «Ролл Мак Чиз» (399 ₽) или «Ролл Армянский» (367 ₽).\nВсе роллы смотри на сайте: https://курлайк.рф',
+                'message': 'У нас есть офигенные роллы! 🌯\nПопробуй «Ролл Цыпа» (378 ₽) или «Ролл Армянский» (404 ₽).\nВсе роллы смотри на сайте: https://курлайк.рф',
                 'random_id': 0
             })
         elif 'пицц' in msg:
             vk_session.method('messages.send', {
                 'user_id': user_id,
-                'message': 'Пицца — это святое! 🍕\nВозьми «Мортальный комбо» (2000 ₽) или «Пипец 1992» (2000 ₽).\nОни огромные и очень вкусные!',
+                'message': 'Пицца — это святое! 🍕\nВозьми «Пицца Танос» (1981 ₽) или «Пицца Цезарь Power» (549 ₽).\nОни огромные и очень вкусные!',
                 'random_id': 0
             })
         elif 'сыр' in msg or 'мак' in msg:
             vk_session.method('messages.send', {
                 'user_id': user_id,
-                'message': 'Сырная тема — это к нам! 🧀\nОбязательно попробуй «Mac & Cheese Фрайс» (419 ₽) или «Ролл Мак Чиз» (399 ₽).',
+                'message': 'Сырная тема — это к нам! 🧀\nОбязательно попробуй «Mac & Cheese Фрайс» (419 ₽) или «Мак &Чизос» (419 ₽).',
+                'random_id': 0
+            })
+        elif 'крыл' in msg:
+            vk_session.method('messages.send', {
+                'user_id': user_id,
+                'message': 'Крылышки — наша гордость! 🍗\n5 крыльев — 465 ₽, 10 крыльев — 899 ₽, 15 крыльев — 1302 ₽.\nЕсть острые, BBQ и Ну мед!',
                 'random_id': 0
             })
 
-        # 8. Если бот не знает команду
+        # 9. Если бот не знает команду
         else:
             vk_session.method('messages.send', {
                 'user_id': user_id,

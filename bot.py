@@ -1,11 +1,10 @@
+import os
 import vk_api
 from vk_api.longpoll import VkLongPoll, VkEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 
 # --- НАСТРОЙКИ ---
-# 1. Вставь сюда свой токен, который получил в настройках сообщества
-TOKEN = "import os
-TOKEN = os.getenv('VK_TOKEN')"
+TOKEN = os.getenv('VK_TOKEN')
 
 # --- ПОДКЛЮЧЕНИЕ ---
 print("Бот запускается...")

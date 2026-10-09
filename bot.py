@@ -60,16 +60,15 @@ def generate_code():
 # --- ПРИЗЫ (вес = вероятность) ---
 # 40% скидка/подарок, 60% комплименты и мелочи
 FORTUNE_REWARDS = [
-    {"text": "🎁 Соус в подарок к любому заказу!", "weight": 25, "tier": "common"},
-    {"text": "😎 Комплимент от шефа: ты выглядишь на миллион! Но увы, без скидки 😅", "weight": 15, "tier": "common"},
-    {"text": "🍟 Картофель фри в подарок при заказе от 500 ₽!", "weight": 15, "tier": "common"},
-    {"text": "💸 Скидка 5% на весь заказ!", "weight": 12, "tier": "uncommon"},
-    {"text": "🥤 Напиток в подарок к любому комбо!", "weight": 10, "tier": "uncommon"},
-    {"text": "🌯 Ролл Цыпа в подарок при заказе от 1000 ₽!", "weight": 6, "tier": "rare"},
-    {"text": "💸 Скидка 10% на весь заказ!", "weight": 5, "tier": "rare"},
-    {"text": "🧀 Mac & Cheese Фрайс в подарок при заказе от 800 ₽!", "weight": 2.5, "tier": "epic"},
-    {"text": "🍕 Пицца 25 см в подарок при заказе от 1500 ₽!", "weight": 1.3, "tier": "epic"},
-    {"text": "🔥 ДЖЕКПОТ! Скидка 25% на весь заказ!", "weight": 0.2, "tier": "legendary"},
+    {"text": "🎁 Соус в подарок к любому заказу!", "weight": 25, "tier": "common", "code_key": "sous"},
+    {"text": "😎 Комплимент от шефа: ты выглядишь на миллион! Но увы, без скидки 😅", "weight": 15, "tier": "common", "code_key": None},
+    {"text": "🍟 Картофель фри в подарок при заказе от 500 ₽!", "weight": 15, "tier": "common", "code_key": "fries"},
+    {"text": "💸 Скидка 5% на весь заказ!", "weight": 12, "tier": "uncommon", "code_key": "discount5"},
+    {"text": "🌯 Ролл Цыпа в подарок при заказе от 1000 ₽!", "weight": 6, "tier": "rare", "code_key": "roll"},
+    {"text": "💸 Скидка 10% на весь заказ!", "weight": 5, "tier": "rare", "code_key": "discount10"},
+    {"text": "🧀 Mac & Cheese Фрайс в подарок при заказе от 800 ₽!", "weight": 2.5, "tier": "epic", "code_key": "mac"},
+    {"text": "🍕 Пицца 25 см в подарок при заказе от 1500 ₽!", "weight": 1.3, "tier": "epic", "code_key": "pizza"},
+    {"text": "🔥 ДЖЕКПОТ! Скидка 25% на весь заказ!", "weight": 0.2, "tier": "legendary", "code_key": "jackpot"},
 ]
 
 TIER_EMOJI = {'common': '🎈', 'uncommon': '🎁', 'rare': '💎', 'epic': '👑', 'legendary': '🔥'}

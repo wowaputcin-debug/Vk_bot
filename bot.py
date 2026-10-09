@@ -1,7 +1,6 @@
 import os
 import json
 import random
-import string
 import vk_api
 from datetime import datetime
 from vk_api.longpoll import VkLongPoll, VkEventType
@@ -9,8 +8,13 @@ from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 
 # --- НАСТРОЙКИ ---
 TOKEN = os.getenv('VK_TOKEN')
-STATE_FILE = 'fortunes.json'   # файл для сохранения попыток
+ADMIN_ID = 58971558   # твой ID для админ-команд
 MAX_ATTEMPTS = 3
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATE_FILE = os.path.join(BASE_DIR, 'fortunes.json')
+CODES_FILE = os.path.join(BASE_DIR, 'promo_codes.txt')
+USED_FILE = os.path.join(BASE_DIR, 'used_codes.json')
 
 # --- ПОДКЛЮЧЕНИЕ ---
 print("Бот запускается...")
@@ -18,47 +22,63 @@ vk_session = vk_api.VkApi(token=TOKEN)
 longpoll = VkLongPoll(vk_session)
 print("Бот готов и ждет сообщений!")
 
-# --- ФАЙЛ СОСТОЯНИЯ (чтобы попытки не сбрасывались) ---
-def load_state():
-    if os.path.exists(STATE_FILE):
+# --- РАБОТА С ФАЙЛАМИ ---
+def load_json(path):
+    if os.path.exists(path):
         try:
-            with open(STATE_FILE, 'r', encoding='utf-8') as f:
+            with open(path, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except Exception:
             pass
     return {}
 
-def save_state(state):
+def save_json(path, data):
     try:
-        with open(STATE_FILE, 'w', encoding='utf-8') as f:
-            json.dump(state, f, ensure_ascii=False, indent=2)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        print(f"Ошибка сохранения: {e}")
+        print(f"Ошибка сохранения {path}: {e}")
 
+# --- ЗАГРУЗКА ПРОМОКОДОВ ---
+def load_promo_codes():
+    """Возвращает dict: {ключ: [список кодов]}"""
+    pools = {}
+    if not os.path.exists(CODES_FILE):
+        print("Файл promo_codes.txt не найден!")
+        return pools
+    with open(CODES_FILE, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            if '|' not in line:
+                continue
+            code, key = line.split('|', 1)
+            code, key = code.strip(), key.strip()
+            pools.setdefault(key, []).append(code)
+    return pools
+
+def get_next_code(pools, used_codes, key):
+    """Берёт следующий свободный код из пула. Возвращает None, если свободных нет."""
+    for code in pools.get(key, []):
+        if code not in used_codes:
+            return code
+    return None
+
+# --- СОСТОЯНИЕ ПОЛЬЗОВАТЕЛЯ ---
 def get_user_state(user_id):
     today = datetime.now().strftime('%Y-%m-%d')
-    key = str(user_id)
-    state = load_state()
-    user = state.get(key, {})
+    state = load_json(STATE_FILE)
+    user = state.get(str(user_id), {})
     if user.get('date') != today:
-        user = {
-            'date': today,
-            'attempts': MAX_ATTEMPTS,
-            'last_msg_id': None,
-            'codes': user.get('codes', [])[-50:]  # храним максимум 50 кодов
-        }
+        user = {'date': today, 'attempts': MAX_ATTEMPTS, 'last_msg_id': None}
     return state, user
 
 def save_user_state(state, user_id, user):
     state[str(user_id)] = user
-    save_state(state)
+    save_json(STATE_FILE, state)
 
-def generate_code():
-    chars = string.ascii_uppercase + string.digits
-    return 'FORT-' + ''.join(random.choices(chars, k=6))
-
-# --- ПРИЗЫ (вес = вероятность) ---
-# 40% скидка/подарок, 60% комплименты и мелочи
+# --- ПРИЗЫ (с указанием ключа промокода) ---
 FORTUNE_REWARDS = [
     {"text": "🎁 Соус в подарок к любому заказу!", "weight": 25, "tier": "common", "code_key": "sous"},
     {"text": "😎 Комплимент от шефа: ты выглядишь на миллион! Но увы, без скидки 😅", "weight": 15, "tier": "common", "code_key": None},
@@ -70,7 +90,6 @@ FORTUNE_REWARDS = [
     {"text": "🍕 Пицца 25 см в подарок при заказе от 1500 ₽!", "weight": 1.3, "tier": "epic", "code_key": "pizza"},
     {"text": "🔥 ДЖЕКПОТ! Скидка 25% на весь заказ!", "weight": 0.2, "tier": "legendary", "code_key": "jackpot"},
 ]
-
 TIER_EMOJI = {'common': '🎈', 'uncommon': '🎁', 'rare': '💎', 'epic': '👑', 'legendary': '🔥'}
 
 def spin_wheel():
@@ -83,7 +102,7 @@ def spin_wheel():
             return reward
     return FORTUNE_REWARDS[0]
 
-# --- ШУТКИ, КОМПЛИМЕНТЫ, ФРАЗЫ ---
+# --- ШУТКИ, КОМПЛИМЕНТЫ ---
 JOKES = [
     "— Почему курица перешла дорогу?\n— Потому что ты заказал её с доставкой! 🐔🚗",
     "— Что сказал сыр в Mac & Cheese?\n— «Я в своей тарелке!» 🧀",
@@ -94,12 +113,9 @@ JOKES = [
     "— Почему наши крылья вкусные?\n— Прошли курсы повышения хрусткости! 🍗📚",
 ]
 COMPLIMENTS = [
-    "Ты сегодня просто огонь! 🔥",
-    "С тобой приятно иметь дело! 😎",
-    "У тебя отличный вкус! 🍗",
-    "Ты выглядишь на миллион! 💰",
-    "Ты легенда! 🏆",
-    "Твоя харизма сильнее соуса остро-вкусно! 🌶️",
+    "Ты сегодня просто огонь! 🔥", "С тобой приятно иметь дело! 😎",
+    "У тебя отличный вкус! 🍗", "Ты выглядишь на миллион! 💰",
+    "Ты легенда! 🏆", "Твоя харизма сильнее соуса остро-вкусно! 🌶️",
 ]
 HELLO_PHRASES = [
     'Здарова! 👋 Голоден? Жми кнопки!',
@@ -112,19 +128,12 @@ UNKNOWN_PHRASES = [
     'Я пока учусь понимать людей. 😅 Тыкни на кнопку!',
     'Не, ну я умный, но не настолько. 😂 Давай закажем?',
 ]
-FORTUNE_PHRASES = [
-    "Крутим барабан... 🎰 Выпало:",
-    "Фортуна улыбается! 😉 Твой выбор:",
-    "Рандом решил за тебя! 🎲",
-    "Огонь! 🔥 Попробуй сегодня это:",
-]
 MOOD_PHRASES = ["Держи позитив! 😄", "Лови заряд настроения! ⚡", "Специально для тебя: 🎁"]
 
-# --- ОТВЕТЫ НА НЕЦЕЛЕВЫЕ ---
+# --- НЕЦЕЛЕВЫЕ ОТВЕТЫ ---
 WORK_RESPONSE = 'Ого, ты хочешь к нам в команду? 🔥\n\nПо вопросам работы пиши сюда:\n👉 https://vk.com/write58971558'
 PARTNERSHIP_RESPONSE = 'Спасибо за предложение! 🤝\n\nПо вопросам сотрудничества и рекламы:\n👉 https://vk.com/write58971558'
 SPAM_RESPONSE = 'Ой, я бот и не разбираюсь в таких вопросах. 😅\n\nРеальные предложения — сюда:\n👉 https://vk.com/write58971558'
-
 WORK_KEYWORDS = ['работ', 'вакан', 'устро', 'резюме', 'трудоустро', 'зарплат', 'подработ', 'повар', 'курьер']
 PARTNERSHIP_KEYWORDS = ['сотруднич', 'партнер', 'партнёр', 'реклам', 'предложени', 'бартер', 'инвестиц', 'коллаб', 'продвижени', 'пиар']
 SPAM_KEYWORDS = ['крипт', 'биткоин', 'заработок', 'пассивный доход', 'трейдинг', 'казино', 'ставк', 'форекс', 'накрутк']
@@ -145,7 +154,6 @@ def get_main_keyboard():
     return kb.get_keyboard()
 
 def get_fortune_keyboard(attempts_left):
-    """Клавиатура после выигрыша: только 'Ещё раз', если попытки остались"""
     if attempts_left <= 0:
         return get_main_keyboard()
     kb = VkKeyboard(one_time=False)
@@ -160,11 +168,11 @@ def get_inline_keyboard():
     kb.add_openlink_button(label='📱 Скачать приложение', link='https://xn--80asbcc3au.xn--p1ai/qr-mobile')
     return kb.get_keyboard()
 
-# --- ФУНКЦИЯ КОЛЕСА ---
+# --- КОЛЕСО ФОРТУНЫ ---
 def handle_fortune(user_id):
     state, user = get_user_state(user_id)
 
-    # Удаляем предыдущее сообщение с результатом
+    # Удаляем прошлое сообщение с результатом
     if user.get('last_msg_id'):
         try:
             vk_session.method('messages.delete', {
@@ -175,7 +183,7 @@ def handle_fortune(user_id):
             print(f"Не удалось удалить сообщение: {e}")
         user['last_msg_id'] = None
 
-    # Попытки закончились
+    # Попытки кончились
     if user['attempts'] <= 0:
         response = vk_session.method('messages.send', {
             'user_id': user_id,
@@ -190,21 +198,35 @@ def handle_fortune(user_id):
     # Крутим
     user['attempts'] -= 1
     reward = spin_wheel()
-    code = generate_code()
-    user['codes'].append({'code': code, 'reward': reward['text'], 'date': user['date']})
     attempts_left = user['attempts']
-
     emoji = TIER_EMOJI[reward['tier']]
-    message = f"🎰 Крутим барабан...\n⏳ Три... Два... Один...\n\n{emoji} {reward['text']}\n\n"
 
-    # Промокод только для реальных подарков
-    if 'без скидки' not in reward['text']:
-        message += f"🎟 Промокод: {code}\n📌 Покажи этот код при заказе.\n\n"
+    message = f"🎰 Крутим барабан...\n⏳ Три... Два... Один...\n\n{emoji} {reward['text']}\n\n"
+    code_given = None
+
+    # Если у приза есть код — берём из файла
+    if reward['code_key']:
+        pools = load_promo_codes()
+        used = load_json(USED_FILE)
+        code = get_next_code(pools, used, reward['code_key'])
+        if code:
+            used[code] = {
+                'user_id': user_id,
+                'date': user['date'],
+                'reward': reward['code_key'],
+                'text': reward['text']
+            }
+            save_json(USED_FILE, used)
+            code_given = code
+            message += f"🎟 Твой промокод: {code}\n📌 Назови его при заказе или покажи на кассе.\n\n"
+        else:
+            # Коды кончились — заменяем приз на комплимент
+            message = f"🎰 Крутим барабан...\n\n😎 Ой, а призы на сегодня закончились! Но ты всё равно классный: {random.choice(COMPLIMENTS)}\n\n"
 
     if attempts_left > 0:
         message += f"🎯 Осталось попыток: {attempts_left}"
     else:
-        message += "🎯 Это была твоя последняя попытка на сегодня!"
+        message += "🎯 Это была последняя попытка на сегодня!"
 
     response = vk_session.method('messages.send', {
         'user_id': user_id,
@@ -215,17 +237,36 @@ def handle_fortune(user_id):
     user['last_msg_id'] = response
     save_user_state(state, user_id, user)
 
+# --- АДМИН-СТАТИСТИКА ---
+def send_admin_stats(user_id):
+    pools = load_promo_codes()
+    used = load_json(USED_FILE)
+    lines = ["📊 Статистика промокодов:\n"]
+    for key, codes in pools.items():
+        free = sum(1 for c in codes if c not in used)
+        lines.append(f"• {key}: свободно {free} из {len(codes)}")
+    lines.append(f"\nВсего использовано: {len(used)}")
+    vk_session.method('messages.send', {
+        'user_id': user_id,
+        'message': '\n'.join(lines),
+        'random_id': 0
+    })
+
 # --- ОСНОВНАЯ ЛОГИКА ---
 for event in longpoll.listen():
     if event.type == VkEventType.MESSAGE_NEW and event.to_me:
         msg = event.text.lower()
         user_id = event.user_id
 
+        # Админ-команда
+        if user_id == ADMIN_ID and msg.strip() in ['стата', 'статистика', 'stats']:
+            send_admin_stats(user_id)
+            continue
+
         is_work = any(w in msg for w in WORK_KEYWORDS)
         is_partner = any(w in msg for w in PARTNERSHIP_KEYWORDS)
         is_spam = any(w in msg for w in SPAM_KEYWORDS)
 
-        # 1. Работа / Сотрудничество / Спам
         if is_work:
             vk_session.method('messages.send', {'user_id': user_id, 'message': WORK_RESPONSE, 'random_id': 0})
         elif is_partner:
@@ -233,7 +274,6 @@ for event in longpoll.listen():
         elif is_spam:
             vk_session.method('messages.send', {'user_id': user_id, 'message': SPAM_RESPONSE, 'keyboard': get_main_keyboard(), 'random_id': 0})
 
-        # 2. Приветствие
         elif msg in ['начать', 'привет', 'start', 'меню', 'помощь', 'здарова', 'хай']:
             vk_session.method('messages.send', {
                 'user_id': user_id,
@@ -242,11 +282,9 @@ for event in longpoll.listen():
                 'random_id': 0
             })
 
-        # 3. КОЛЕСО ФОРТУНЫ (включая «Ещё раз»)
         elif 'колесо' in msg or msg == '🎲 ещё раз' or 'фортуны' in msg or 'рандом' in msg or 'не знаю' in msg:
             handle_fortune(user_id)
 
-        # 4. Где заказать
         elif msg == '🛒 где заказать' or 'заказ' in msg:
             vk_session.method('messages.send', {
                 'user_id': user_id,
@@ -255,39 +293,26 @@ for event in longpoll.listen():
                 'random_id': 0
             })
 
-        # 5. Что вкуснее?
         elif msg == '😋 что вкуснее?' or 'вкусн' in msg or 'посовет' in msg:
             vk_session.method('messages.send', {
                 'user_id': user_id,
-                'message': 'Если хочешь попробовать новое:\n1. Комбо курочка+подружка (1263 ₽) — взрыв курицы! 🍗\n2. Mac & Cheese Фрайс (419 ₽) — сыр, рожки и фри! 🧀\n3. Баскет Пэли мэни пакьяо (631 ₽) — для всех! 🥟\nОни просто огонь! 🔥',
+                'message': 'Если хочешь новое:\n1. Комбо курочка+подружка (1263 ₽) — взрыв курицы! 🍗\n2. Mac & Cheese Фрайс (419 ₽) — сыр, рожки и фри! 🧀\n3. Баскет Пэли мэни пакьяо (631 ₽)! 🥟\nОгонь! 🔥',
                 'random_id': 0
             })
 
-        # 6. Что чаще берут?
         elif msg == '🔥 что чаще берут?' or 'хит' in msg or 'популярн' in msg or 'берут' in msg:
             vk_session.method('messages.send', {
                 'user_id': user_id,
-                'message': 'Наши бестселлеры:\n🥇 Цыпа (378 ₽) — хит продаж!\n🥈 Курочка+друг (1263 ₽) — комбо на двоих.\n🥉 Пицца «ТАНОС» (1981 ₽) — для гурманов.\nПопробуй! 😉',
+                'message': 'Бестселлеры:\n🥇 Цыпа (378 ₽)\n🥈 Курочка+друг (1263 ₽)\n🥉 Пицца «ТАНОС» (1981 ₽)\nПопробуй! 😉',
                 'random_id': 0
             })
 
-        # 7. Наш сайт
         elif msg == '🌐 наш сайт' or 'сайт' in msg:
-            vk_session.method('messages.send', {
-                'user_id': user_id,
-                'message': 'Ссылка на сайт с меню и акциями:\n👉 https://курлайк.рф',
-                'random_id': 0
-            })
+            vk_session.method('messages.send', {'user_id': user_id, 'message': 'Сайт с меню и акциями:\n👉 https://курлайк.рф', 'random_id': 0})
 
-        # 8. Оставить отзыв
         elif msg == '✍️ оставить отзыв' or 'отзыв' in msg:
-            vk_session.method('messages.send', {
-                'user_id': user_id,
-                'message': 'Нам важно твоё мнение! ❤️ Напиши отзыв:\n👉 https://vk.com/write58971558',
-                'random_id': 0
-            })
+            vk_session.method('messages.send', {'user_id': user_id, 'message': 'Нам важно твоё мнение! ❤️ Напиши отзыв:\n👉 https://vk.com/write58971558', 'random_id': 0})
 
-        # 9. Поднять настроение
         elif msg == '😄 поднять настроение' or 'шутк' in msg or 'анекдот' in msg or 'комплимент' in msg or 'настроение' in msg:
             text = random.choice(JOKES) if random.choice([True, False]) else random.choice(COMPLIMENTS)
             vk_session.method('messages.send', {
@@ -297,22 +322,20 @@ for event in longpoll.listen():
                 'random_id': 0
             })
 
-        # 10. Умный поиск
         elif 'ролл' in msg:
-            vk_session.method('messages.send', {'user_id': user_id, 'message': 'У нас офигенные роллы! 🌯\n«Ролл Цыпа» (378 ₽), «Ролл Армянский» (404 ₽).\nВсё тут: https://курлайк.рф', 'random_id': 0})
+            vk_session.method('messages.send', {'user_id': user_id, 'message': 'Роллы! 🌯\n«Цыпа» (378 ₽), «Армянский» (404 ₽).\nВсё тут: https://курлайк.рф', 'random_id': 0})
         elif 'пицц' in msg:
-            vk_session.method('messages.send', {'user_id': user_id, 'message': 'Пицца — это святое! 🍕\n«Пицца Танос» (1981 ₽) или «Цезарь Power» (549 ₽).', 'random_id': 0})
+            vk_session.method('messages.send', {'user_id': user_id, 'message': 'Пицца! 🍕\n«Танос» (1981 ₽) или «Цезарь Power» (549 ₽).', 'random_id': 0})
         elif 'сыр' in msg or 'мак' in msg:
             vk_session.method('messages.send', {'user_id': user_id, 'message': 'Сырная тема! 🧀\n«Mac & Cheese Фрайс» (419 ₽) или «Мак &Чизос» (419 ₽).', 'random_id': 0})
         elif 'крыл' in msg:
-            vk_session.method('messages.send', {'user_id': user_id, 'message': 'Крылышки — гордость! 🍗\n5 шт — 465 ₽, 10 шт — 899 ₽, 15 шт — 1302 ₽.\nЕсть острые, BBQ и Ну мед!', 'random_id': 0})
+            vk_session.method('messages.send', {'user_id': user_id, 'message': 'Крылышки! 🍗\n5 шт — 465 ₽, 10 шт — 899 ₽, 15 шт — 1302 ₽.', 'random_id': 0})
 
-        # 11. Не понял
         else:
             bonus = random.choice(JOKES) if random.choice([True, False]) else random.choice(COMPLIMENTS)
             vk_session.method('messages.send', {
                 'user_id': user_id,
-                'message': f'{bonus}\n\n{random.choice(UNKNOWN_PHRASES)}',
+                'message': f'{bonus}\n\n{random.choice(UNKNOWN_CHOICES) if False else random.choice(UNKNOWN_PHRASES)}',
                 'keyboard': get_main_keyboard(),
                 'random_id': 0
             })

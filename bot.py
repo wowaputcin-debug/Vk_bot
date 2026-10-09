@@ -63,7 +63,6 @@ HELLO_PHRASES = [
     'Курочка рядом на связи! 🐔 Чем могу помочь? Жми кнопки!'
 ]
 
-# Умные ответы на непонятные сообщения (с шутками и комплиментами)
 UNKNOWN_PHRASES = [
     'Хм, сложный вопрос! 🤔 Давай лучше закажем что-нибудь вкусное. Жми кнопки! 👇',
     'Я пока еще учусь понимать людей. 😅 Тыкни на кнопку, я все покажу!',
@@ -88,7 +87,7 @@ MOOD_PHRASES = [
     "Ням-ням, вот тебе комплимент: 😋"
 ]
 
-# --- ФУНКЦИЯ ДЛЯ КЛАВИАТУРЫ ---
+# --- ОБЫЧНАЯ КЛАВИАТУРА (внизу экрана) ---
 def get_main_keyboard():
     keyboard = VkKeyboard(one_time=False)
     keyboard.add_button('🛒 Где заказать', color=VkKeyboardColor.PRIMARY)
@@ -104,6 +103,20 @@ def get_main_keyboard():
     
     keyboard.add_line()
     keyboard.add_button('✍️ Оставить отзыв', color=VkKeyboardColor.NEGATIVE)
+    
+    return keyboard.get_keyboard()
+
+# --- INLINE-КЛАВИАТУРА (кнопки внутри сообщения) ---
+def get_inline_keyboard():
+    # inline=True — кнопки прикрепляются к сообщению
+    keyboard = VkKeyboard(inline=True)
+    
+    # Первая строка — заказ
+    keyboard.add_openlink_button(label='🌐 Заказать на сайте', link='https://курлайк.рф')
+    keyboard.add_line()
+    keyboard.add_openlink_button(label='📱 Скачать приложение', link='https://xn--80asbcc3au.xn--p1ai/qr-mobile')
+    keyboard.add_line()
+    keyboard.add_openlink_button(label='📞 Позвонить', link='tel:+79145182212')
     
     return keyboard.get_keyboard()
 
@@ -124,11 +137,12 @@ for event in longpoll.listen():
                 'random_id': 0
             })
         
-        # 2. Где заказать
+        # 2. Где заказать (ОБНОВЛЕНО: inline-кнопки!)
         elif msg == '🛒 где заказать' or 'заказ' in msg:
             vk_session.method('messages.send', {
                 'user_id': user_id,
-                'message': 'Заказать наши вкусняшки можно на сайте:\n👉 https://курлайк.рф\n\nТам всё меню, акции и быстрая доставка! 🚀',
+                'message': 'Заказать наши вкусняшки можно так:\n👇 Выбирай удобный способ!',
+                'keyboard': get_inline_keyboard(),
                 'random_id': 0
             })
             
@@ -156,7 +170,7 @@ for event in longpoll.listen():
                 'random_id': 0
             })
 
-        # 6. Оставить отзыв
+        # 6. Оставить отзыв (обновлён ID!)
         elif msg == '✍️ оставить отзыв' or 'отзыв' in msg:
             vk_session.method('messages.send', {
                 'user_id': user_id,
@@ -174,9 +188,8 @@ for event in longpoll.listen():
                 'random_id': 0
             })
 
-        # 8. ПОДНЯТЬ НАСТРОЕНИЕ (Шутка или комплимент)
+        # 8. ПОДНЯТЬ НАСТРОЕНИЕ
         elif msg == '😄 поднять настроение' or 'шутк' in msg or 'анекдот' in msg or 'комплимент' in msg or 'настроение' in msg:
-            # Выбираем случайно: шутка или комплимент
             if random.choice([True, False]):
                 text = random.choice(JOKES)
             else:
@@ -216,9 +229,8 @@ for event in longpoll.listen():
                 'random_id': 0
             })
 
-        # 10. Если бот не знает команду — шутит или хвалит, потом показывает меню
+        # 10. Если бот не знает команду
         else:
-            # Сначала случайная шутка или комплимент
             if random.choice([True, False]):
                 bonus = random.choice(JOKES)
             else:

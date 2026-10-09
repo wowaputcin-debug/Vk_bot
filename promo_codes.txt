@@ -1,0 +1,13 @@
+SOUS-A1B2|sous
+SOUS-C3D4|sous
+SOUS-E5F6|sous
+FRI-G7H8|fries
+FRI-I9J0|fries
+DIS5-M3N4|discount5
+DIS5-O5P6|discount5
+ROLL-Q7R8|roll
+DIS10-S9T0|discount10
+DIS10-U1V2|discount10
+MAC-W3X4|mac
+PIZZA-Y5Z6|pizza
+JACK-A7B8|jackpot

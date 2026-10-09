@@ -87,7 +87,17 @@ MOOD_PHRASES = [
     "Ням-ням, вот тебе комплимент: 😋"
 ]
 
-# --- ОБЫЧНАЯ КЛАВИАТУРА (внизу экрана) ---
+# --- ОТВЕТЫ НА "НЕЦЕЛЕВЫЕ" СООБЩЕНИЯ ---
+WORK_RESPONSE = 'Ого, ты хочешь к нам в команду? 🔥 Это круто!\n\nПо вопросам трудоустройства пиши напрямую:\n👉 https://vk.com/write58971558\n\nОбязательно рассмотрим твою кандидатуру! 💪'
+PARTNERSHIP_RESPONSE = 'Спасибо за предложение! 🤝\n\nПо вопросам сотрудничества, рекламы и партнёрства пиши напрямую:\n👉 https://vk.com/write58971558\n\nОтвечу в течение дня! 😉'
+SPAM_RESPONSE = 'Ой, я бот и не разбираюсь в таких вопросах. 😅\n\nЕсли у тебя реальное предложение — напиши напрямую:\n👉 https://vk.com/write58971558\n\nА если хочешь кушать — жми кнопки ниже! 👇'
+
+# --- КЛЮЧЕВЫЕ СЛОВА ---
+WORK_KEYWORDS = ['работ', 'вакан', 'устро', 'резюме', 'трудоустро', 'зарплат', 'подработ', 'ищу работ', 'повар', 'курьер', 'менеджер вакансия']
+PARTNERSHIP_KEYWORDS = ['сотруднич', 'партнер', 'партнёр', 'реклам', 'предложени', 'бартер', 'инвестиц', 'коллаб', 'collab', 'продвижени', 'пиар', 'pr ']
+SPAM_KEYWORDS = ['крипт', 'биткоин', 'заработок', 'пассивный доход', 'инвест', 'трейдинг', 'казино', 'ставк', 'форекс', 'прокачка', 'накрутк', 'smm продвижени']
+
+# --- ОБЫЧНАЯ КЛАВИАТУРА ---
 def get_main_keyboard():
     keyboard = VkKeyboard(one_time=False)
     keyboard.add_button('🛒 Где заказать', color=VkKeyboardColor.PRIMARY)
@@ -108,16 +118,10 @@ def get_main_keyboard():
 
 # --- INLINE-КЛАВИАТУРА (кнопки внутри сообщения) ---
 def get_inline_keyboard():
-    # inline=True — кнопки прикрепляются к сообщению
     keyboard = VkKeyboard(inline=True)
-    
-    # Первая строка — заказ
     keyboard.add_openlink_button(label='🌐 Заказать на сайте', link='https://курлайк.рф')
     keyboard.add_line()
     keyboard.add_openlink_button(label='📱 Скачать приложение', link='https://xn--80asbcc3au.xn--p1ai/qr-mobile')
-    keyboard.add_line()
-    keyboard.add_openlink_button(label='📞 Позвонить', link='tel:+79145182212')
-    
     return keyboard.get_keyboard()
 
 # --- ОСНОВНАЯ ЛОГИКА ---
@@ -126,8 +130,38 @@ for event in longpoll.listen():
         msg = event.text.lower()
         user_id = event.user_id
 
-        # 1. Приветствие (с комплиментом!)
-        if msg in ['начать', 'привет', 'start', 'меню', 'помощь', 'здарова', 'хай']:
+        # --- ПРОВЕРКА НА НЕЦЕЛЕВЫЕ СООБЩЕНИЯ (в самом начале) ---
+        is_work = any(word in msg for word in WORK_KEYWORDS)
+        is_partnership = any(word in msg for word in PARTNERSHIP_KEYWORDS)
+        is_spam = any(word in msg for word in SPAM_KEYWORDS)
+
+        # 1. Работа/вакансии
+        if is_work:
+            vk_session.method('messages.send', {
+                'user_id': user_id,
+                'message': WORK_RESPONSE,
+                'random_id': 0
+            })
+        
+        # 2. Сотрудничество/партнёрство/реклама
+        elif is_partnership:
+            vk_session.method('messages.send', {
+                'user_id': user_id,
+                'message': PARTNERSHIP_RESPONSE,
+                'random_id': 0
+            })
+        
+        # 3. Спам/крипта/заработок
+        elif is_spam:
+            vk_session.method('messages.send', {
+                'user_id': user_id,
+                'message': SPAM_RESPONSE,
+                'keyboard': get_main_keyboard(),
+                'random_id': 0
+            })
+
+        # 4. Приветствие
+        elif msg in ['начать', 'привет', 'start', 'меню', 'помощь', 'здарова', 'хай']:
             greeting = random.choice(HELLO_PHRASES)
             compliment = random.choice(COMPLIMENTS)
             vk_session.method('messages.send', {
@@ -137,7 +171,7 @@ for event in longpoll.listen():
                 'random_id': 0
             })
         
-        # 2. Где заказать (ОБНОВЛЕНО: inline-кнопки!)
+        # 5. Где заказать
         elif msg == '🛒 где заказать' or 'заказ' in msg:
             vk_session.method('messages.send', {
                 'user_id': user_id,
@@ -146,7 +180,7 @@ for event in longpoll.listen():
                 'random_id': 0
             })
             
-        # 3. Что вкуснее?
+        # 6. Что вкуснее?
         elif msg == '😋 что вкуснее?' or 'вкусн' in msg or 'посовет' in msg:
             vk_session.method('messages.send', {
                 'user_id': user_id,
@@ -154,7 +188,7 @@ for event in longpoll.listen():
                 'random_id': 0
             })
 
-        # 4. Что чаще берут?
+        # 7. Что чаще берут?
         elif msg == '🔥 что чаще берут?' or 'хит' in msg or 'популярн' in msg or 'берут' in msg:
             vk_session.method('messages.send', {
                 'user_id': user_id,
@@ -162,7 +196,7 @@ for event in longpoll.listen():
                 'random_id': 0
             })
             
-        # 5. Наш сайт
+        # 8. Наш сайт
         elif msg == '🌐 наш сайт' or 'сайт' in msg:
             vk_session.method('messages.send', {
                 'user_id': user_id,
@@ -170,7 +204,7 @@ for event in longpoll.listen():
                 'random_id': 0
             })
 
-        # 6. Оставить отзыв (обновлён ID!)
+        # 9. Оставить отзыв
         elif msg == '✍️ оставить отзыв' or 'отзыв' in msg:
             vk_session.method('messages.send', {
                 'user_id': user_id,
@@ -178,7 +212,7 @@ for event in longpoll.listen():
                 'random_id': 0
             })
 
-        # 7. КОЛЕСО ФОРТУНЫ
+        # 10. КОЛЕСО ФОРТУНЫ
         elif msg == '🎲 колесо фортуны' or 'колесо' in msg or 'не знаю' in msg or 'рандом' in msg:
             dish = random.choice(DISHES)
             phrase = random.choice(FORTUNE_PHRASES)
@@ -188,13 +222,12 @@ for event in longpoll.listen():
                 'random_id': 0
             })
 
-        # 8. ПОДНЯТЬ НАСТРОЕНИЕ
+        # 11. ПОДНЯТЬ НАСТРОЕНИЕ
         elif msg == '😄 поднять настроение' or 'шутк' in msg or 'анекдот' in msg or 'комплимент' in msg or 'настроение' in msg:
             if random.choice([True, False]):
                 text = random.choice(JOKES)
             else:
                 text = random.choice(COMPLIMENTS)
-            
             phrase = random.choice(MOOD_PHRASES)
             vk_session.method('messages.send', {
                 'user_id': user_id,
@@ -203,7 +236,7 @@ for event in longpoll.listen():
                 'random_id': 0
             })
         
-        # 9. Умный поиск по меню
+        # 12. Умный поиск по меню
         elif 'ролл' in msg:
             vk_session.method('messages.send', {
                 'user_id': user_id,
@@ -229,13 +262,12 @@ for event in longpoll.listen():
                 'random_id': 0
             })
 
-        # 10. Если бот не знает команду
+        # 13. Если бот не знает команду
         else:
             if random.choice([True, False]):
                 bonus = random.choice(JOKES)
             else:
                 bonus = random.choice(COMPLIMENTS)
-            
             phrase = random.choice(UNKNOWN_PHRASES)
             vk_session.method('messages.send', {
                 'user_id': user_id,

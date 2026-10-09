@@ -153,14 +153,21 @@ def get_main_keyboard():
     kb.add_button('✍️ Оставить отзыв', color=VkKeyboardColor.NEGATIVE)
     return kb.get_keyboard()
 
-def get_fortune_keyboard(attempts_left):
-    if attempts_left <= 0:
-        return get_main_keyboard()
-    kb = VkKeyboard(one_time=False)
-    kb.add_button('🎲 Ещё раз', color=VkKeyboardColor.POSITIVE)
-    kb.add_button('🛒 Где заказать', color=VkKeyboardColor.PRIMARY)
+def get_fortune_inline_keyboard(attempts_left):
+    """Кнопки для результата колеса (inline — прикреплены к сообщению)."""
+    kb = VkKeyboard(inline=True)
+    
+    # Кнопки-ссылки — акцент на приложение
+    kb.add_openlink_button(label='📱 Скачать приложение', link='https://xn--80asbcc3au.xn--p1ai/qr-mobile')
+    kb.add_line()
+    kb.add_openlink_button(label='🌐 Заказать на сайте', link='https://курлайк.рф')
+    
+    # Если попытки остались — добавляем «Ещё раз» прямо в сообщение
+    if attempts_left > 0:
+        kb.add_line()
+        kb.add_button('🎲 Ещё раз', color=VkKeyboardColor.POSITIVE)
+    
     return kb.get_keyboard()
-
 def get_inline_keyboard():
     kb = VkKeyboard(inline=True)
     kb.add_openlink_button(label='🌐 Заказать на сайте', link='https://курлайк.рф')
@@ -187,8 +194,8 @@ def handle_fortune(user_id):
     if user['attempts'] <= 0:
         response = vk_session.method('messages.send', {
             'user_id': user_id,
-            'message': '😢 Ты уже использовал все 3 попытки на сегодня!\n\nВозвращайся завтра за новой порцией удачи. А пока — закажи что-нибудь вкусное! 🍗',
-            'keyboard': get_main_keyboard(),
+            'message': '😢 Ты уже использовал все 3 попытки на сегодня!\n\nВозвращайся завтра за новой порцией удачи. А пока — закажи что-нибудь вкусное в приложении 🍗',
+            'keyboard': get_inline_keyboard(),
             'random_id': 0
         })
         user['last_msg_id'] = response
@@ -218,20 +225,32 @@ def handle_fortune(user_id):
             }
             save_json(USED_FILE, used)
             code_given = code
-            message += f"🎟 Твой промокод: {code}\n📌 Назови его при заказе или покажи на кассе.\n\n"
+            message += (
+                f"🎟 Твой промокод: {code}\n\n"
+                f"📲 Введи его в приложении или на сайте при оформлении заказа — скидка применится автоматически!\n\n"
+            )
         else:
-            # Коды кончились — заменяем приз на комплимент
-            message = f"🎰 Крутим барабан...\n\n😎 Ой, а призы на сегодня закончились! Но ты всё равно классный: {random.choice(COMPLIMENTS)}\n\n"
+            message = (
+                f"🎰 Крутим барабан...\n\n"
+                f"😎 Ой, а призы на сегодня закончились! Но ты всё равно классный: "
+                f"{random.choice(COMPLIMENTS)}\n\n"
+            )
 
-    if attempts_left > 0:
-        message += f"🎯 Осталось попыток: {attempts_left}"
+    # Добавляем кнопки-ссылки на приложение/сайт, если код выдан
+    if code_given:
+        message += "👇 Заказывай прямо тут:"
+        keyboard = get_fortune_inline_keyboard(attempts_left)
     else:
-        message += "🎯 Это была последняя попытка на сегодня!"
+        # Если приз без кода или без призов — оставляем только "Ещё раз" и "Где заказать"
+        if attempts_left > 0:
+            keyboard = get_fortune_inline_keyboard(attempts_left)
+        else:
+            keyboard = get_inline_keyboard()
 
     response = vk_session.method('messages.send', {
         'user_id': user_id,
         'message': message,
-        'keyboard': get_fortune_keyboard(attempts_left),
+        'keyboard': keyboard,
         'random_id': 0
     })
     user['last_msg_id'] = response

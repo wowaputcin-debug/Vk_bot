@@ -82,6 +82,84 @@ def broadcast(text):
         # Пауза 0.05 сек (20 сообщений в секунду — лимит ВК)
         time.sleep(0.05)
     return sent, failed
+    def sync_subscribers_from_conversations():
+    """Выгружает все диалоги сообщества и добавляет их в базу подписчиков."""
+    import time
+    added = 0
+    skipped = 0
+    offset = 0
+    total_checked = 0
+    
+    # Получаем ID сообщества (группы) — нам он нужен для правильного запроса
+    try:
+        group_info = vk_session.method('groups.getById')
+        group_id = group_info[0]['id']
+    except Exception as e:
+        print(f"Не удалось получить ID группы: {e}")
+        return 0, 0
+    
+    # Читаем текущих подписчиков
+    existing = set()
+    if os.path.exists(SUBSCRIBERS_FILE):
+        with open(SUBSCRIBERS_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                existing.add(line.strip())
+    
+    while True:
+        try:
+            # Запрашиваем диалоги сообщества (по 200 за раз — максимум)
+            conversations = vk_session.method('messages.getConversations', {
+                'group_id': group_id,
+                'count': 200,
+                'offset': offset,
+                'filter': 'all'
+            })
+        except Exception as e:
+            print(f"Ошибка получения диалогов: {e}")
+            break
+        
+        items = conversations.get('items', [])
+        if not items:
+            break
+        
+        for item in items:
+            conv = item.get('conversation', {})
+            peer = conv.get('peer', {})
+            peer_id = peer.get('id')
+            
+            # Нас интересуют только пользователи (id > 0), не беседы (id < 0)
+            if not peer_id or peer_id <= 0:
+                continue
+            
+            total_checked += 1
+            uid_str = str(peer_id)
+            if uid_str not in existing:
+                # Проверяем, разрешил ли пользователь сообщения
+                try:
+                    allowed = vk_session.method('messages.isMessagesFromGroupAllowed', {
+                        'group_id': group_id,
+                        'user_id': peer_id
+                    })
+                    if allowed.get('is_allowed'):
+                        existing.add(uid_str)
+                        added += 1
+                    else:
+                        skipped += 1
+                except Exception:
+                    skipped += 1
+                time.sleep(0.05)
+        
+        offset += 200
+        if offset >= conversations.get('count', 0):
+            break
+        time.sleep(0.3)  # пауза между пачками
+    
+    # Сохраняем всех подписчиков
+    with open(SUBSCRIBERS_FILE, 'w', encoding='utf-8') as f:
+        for uid in sorted(existing, key=lambda x: int(x) if x.isdigit() else 0):
+            f.write(uid + '\n')
+    
+    return added, skipped
 
 # --- ЗАГРУЗКА ПРОМОКОДОВ ---
 def load_promo_codes():
@@ -328,6 +406,24 @@ for event in longpoll.listen():
             # Статистика
             if msg.strip() in ['стата', 'статистика', 'stats']:
                 send_admin_stats(user_id)
+                continue
+
+                    # Синхронизация подписчиков из диалогов сообщества
+            if msg.strip() in ['/sync', 'синхронизация', 'выгрузить']:
+                vk_session.method('messages.send', {
+                    'user_id': user_id,
+                    'message': '⏳ Собираю диалоги из сообщества...\nЭто может занять пару минут. Подожди.',
+                    'random_id': 0
+                })
+                
+                added, skipped = sync_subscribers_from_conversations()
+                total = len(get_all_subscribers())
+                
+                vk_session.method('messages.send', {
+                    'user_id': user_id,
+                    'message': f'✅ Синхронизация готова!\n\n📊 Проверено диалогов: {added + skipped}\n➕ Добавлено новых: {added}\n🚫 Пропущено (закрыты для ЛС): {skipped}\n\n👥 Всего в базе: {total} подписчиков.',
+                    'random_id': 0
+                })
                 continue
             
             # Количество подписчиков

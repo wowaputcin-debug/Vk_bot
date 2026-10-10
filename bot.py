@@ -38,6 +38,50 @@ def save_json(path, data):
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"Ошибка сохранения {path}: {e}")
+        # --- СБОР ПОДПИСЧИКОВ ---
+SUBSCRIBERS_FILE = os.path.join(BASE_DIR, 'subscribers.txt')
+
+def add_subscriber(user_id):
+    """Добавляет user_id в файл подписчиков, если его там ещё нет."""
+    user_id = str(user_id)
+    # Читаем существующих
+    existing = set()
+    if os.path.exists(SUBSCRIBERS_FILE):
+        with open(SUBSCRIBERS_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                existing.add(line.strip())
+    # Если новый — добавляем
+    if user_id not in existing:
+        with open(SUBSCRIBERS_FILE, 'a', encoding='utf-8') as f:
+            f.write(user_id + '\n')
+        print(f"Новый подписчик: {user_id}")
+
+def get_all_subscribers():
+    """Возвращает список всех ID подписчиков."""
+    if not os.path.exists(SUBSCRIBERS_FILE):
+        return []
+    with open(SUBSCRIBERS_FILE, 'r', encoding='utf-8') as f:
+        return [line.strip() for line in f if line.strip()]
+
+def broadcast(text):
+    """Рассылает сообщение всем подписчикам с паузами."""
+    import time
+    subs = get_all_subscribers()
+    sent, failed = 0, 0
+    for i, uid in enumerate(subs):
+        try:
+            vk_session.method('messages.send', {
+                'user_id': int(uid),
+                'message': text,
+                'random_id': 0
+            })
+            sent += 1
+        except Exception as e:
+            failed += 1
+            print(f"Ошибка отправки {uid}: {e}")
+        # Пауза 0.05 сек (20 сообщений в секунду — лимит ВК)
+        time.sleep(0.05)
+    return sent, failed
 
 # --- ЗАГРУЗКА ПРОМОКОДОВ ---
 def load_promo_codes():
@@ -276,11 +320,51 @@ for event in longpoll.listen():
     if event.type == VkEventType.MESSAGE_NEW and event.to_me:
         msg = event.text.lower()
         user_id = event.user_id
+                # Сохраняем каждого, кто написал боту
+        add_subscriber(user_id)
 
-        # Админ-команда
-        if user_id == ADMIN_ID and msg.strip() in ['стата', 'статистика', 'stats']:
-            send_admin_stats(user_id)
-            continue
+             # --- АДМИН-КОМАНДЫ ---
+        if user_id == ADMIN_ID:
+            # Статистика
+            if msg.strip() in ['стата', 'статистика', 'stats']:
+                send_admin_stats(user_id)
+                continue
+            
+            # Количество подписчиков
+            if msg.strip() in ['подписчики', 'база', 'subs']:
+                subs = get_all_subscribers()
+                vk_session.method('messages.send', {
+                    'user_id': user_id,
+                    'message': f'📊 В базе {len(subs)} подписчиков.',
+                    'random_id': 0
+                })
+                continue
+            
+            # Рассылка: /broadcast Текст сообщения
+            if msg.startswith('/broadcast '):
+                broadcast_text = event.text[len('/broadcast '):].strip()
+                if not broadcast_text:
+                    vk_session.method('messages.send', {
+                        'user_id': user_id,
+                        'message': '❌ Текст пустой. Формат: /broadcast Привет, друзья!',
+                        'random_id': 0
+                    })
+                    continue
+                
+                vk_session.method('messages.send', {
+                    'user_id': user_id,
+                    'message': f'🚀 Начинаю рассылку {len(get_all_subscribers())} подписчикам...',
+                    'random_id': 0
+                })
+                
+                sent, failed = broadcast(broadcast_text)
+                
+                vk_session.method('messages.send', {
+                    'user_id': user_id,
+                    'message': f'✅ Рассылка завершена!\n📨 Отправлено: {sent}\n❌ Ошибок: {failed}',
+                    'random_id': 0
+                })
+                continue
 
         is_work = any(w in msg for w in WORK_KEYWORDS)
         is_partner = any(w in msg for w in PARTNERSHIP_KEYWORDS)

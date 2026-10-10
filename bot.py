@@ -19,6 +19,7 @@ STATE_FILE = os.path.join(BASE_DIR, 'fortunes.json')
 CODES_FILE = os.path.join(BASE_DIR, 'promo_codes.txt')
 USED_FILE = os.path.join(BASE_DIR, 'used_codes.json')
 SUBSCRIBERS_FILE = os.path.join(BASE_DIR, 'subscribers.txt')
+UNSUB_FILE = os.path.join(BASE_DIR, 'unsubscribed.txt')
 
 # ==============================
 # ПОДКЛЮЧЕНИЕ
@@ -77,7 +78,15 @@ def get_next_code(pools, used_codes, key):
 # ПОДПИСЧИКИ
 # ==============================
 def add_subscriber(user_id):
+    """Добавляет user_id в файл подписчиков. Отписавшиеся не добавляются."""
     user_id = str(user_id)
+
+    # Проверяем, есть ли он в списке отписавшихся
+    if os.path.exists(UNSUB_FILE):
+        with open(UNSUB_FILE, 'r', encoding='utf-8') as f:
+            if user_id in [line.strip() for line in f if line.strip()]:
+                return
+
     existing = set()
     if os.path.exists(SUBSCRIBERS_FILE):
         with open(SUBSCRIBERS_FILE, 'r', encoding='utf-8') as f:
@@ -88,6 +97,30 @@ def add_subscriber(user_id):
             f.write(user_id + '\n')
         print(f"Новый подписчик: {user_id}")
 
+def remove_subscriber(user_id):
+    """Удаляет user_id из файла подписчиков."""
+    user_id = str(user_id)
+    if not os.path.exists(SUBSCRIBERS_FILE):
+        return False
+    with open(SUBSCRIBERS_FILE, 'r', encoding='utf-8') as f:
+        lines = [line.strip() for line in f if line.strip()]
+    if user_id not in lines:
+        return False
+    lines = [uid for uid in lines if uid != user_id]
+    with open(SUBSCRIBERS_FILE, 'w', encoding='utf-8') as f:
+        for uid in lines:
+            f.write(uid + '\n')
+    print(f"Отписался: {user_id}")
+    return True
+
+def is_subscribed(user_id):
+    """Проверяет, есть ли user_id в базе подписчиков."""
+    user_id = str(user_id)
+    if not os.path.exists(SUBSCRIBERS_FILE):
+        return False
+    with open(SUBSCRIBERS_FILE, 'r', encoding='utf-8') as f:
+        return user_id in [line.strip() for line in f if line.strip()]
+
 def get_all_subscribers():
     if not os.path.exists(SUBSCRIBERS_FILE):
         return []
@@ -96,6 +129,12 @@ def get_all_subscribers():
 
 def broadcast(text):
     subs = get_all_subscribers()
+    unsubscribed = set()
+    if os.path.exists(UNSUB_FILE):
+        with open(UNSUB_FILE, 'r', encoding='utf-8') as f:
+            unsubscribed = set(line.strip() for line in f if line.strip())
+    subs = [uid for uid in subs if uid not in unsubscribed]
+
     sent, failed = 0, 0
     for uid in subs:
         try:
@@ -130,6 +169,12 @@ def sync_subscribers_from_conversations():
             for line in f:
                 existing.add(line.strip())
 
+    # Отписавшиеся — не добавляем обратно
+    unsubscribed = set()
+    if os.path.exists(UNSUB_FILE):
+        with open(UNSUB_FILE, 'r', encoding='utf-8') as f:
+            unsubscribed = set(line.strip() for line in f if line.strip())
+
     while True:
         try:
             conversations = vk_session.method('messages.getConversations', {
@@ -155,6 +200,8 @@ def sync_subscribers_from_conversations():
                 continue
 
             uid_str = str(peer_id)
+            if uid_str in unsubscribed:
+                continue
             if uid_str not in existing:
                 try:
                     allowed = vk_session.method('messages.isMessagesFromGroupAllowed', {
@@ -182,7 +229,7 @@ def sync_subscribers_from_conversations():
     return added, skipped
 
 # ==============================
-# СОСТОЯНИЕ ПОЛЬЗОВАТЕЛЯ
+# СОСТОЯНИЕ ПОЛЬЗОВАТЕЛЯ (колесо фортуны)
 # ==============================
 def get_user_state(user_id):
     today = datetime.now().strftime('%Y-%m-%d')
@@ -298,6 +345,7 @@ def get_main_keyboard():
     kb.add_button('🌐 Наш сайт', color=VkKeyboardColor.PRIMARY)
     kb.add_line()
     kb.add_button('✍️ Оставить отзыв', color=VkKeyboardColor.NEGATIVE)
+    kb.add_button('💔 Отписаться', color=VkKeyboardColor.SECONDARY)
     return kb.get_keyboard()
 
 def get_fortune_inline_keyboard(attempts_left):
@@ -420,7 +468,7 @@ for event in longpoll.listen():
         msg = event.text.lower()
         user_id = event.user_id
 
-        # Сохраняем подписчика
+        # Сохраняем подписчика (если ещё не отписался)
         add_subscriber(user_id)
 
         # ==============================
@@ -478,17 +526,47 @@ for event in longpoll.listen():
                 continue
 
         # ==============================
+        # ОТПИСКА
+        # ==============================
+        if msg == '💔 отписаться' or 'отписаться' in msg or 'отписка' in msg:
+            was_subscribed = is_subscribed(user_id)
+            if was_subscribed:
+                remove_subscriber(user_id)
+                # Записываем в файл отписавшихся, чтобы не добавлять снова
+                with open(UNSUB_FILE, 'a', encoding='utf-8') as f:
+                    f.write(str(user_id) + '\n')
+
+                vk_session.method('messages.send', {
+                    'user_id': user_id,
+                    'message': (
+                        '💔 Извини, что мы больше не сможем тебе писать...\n\n'
+                        'Ты был лучшим подписчиком! 🥺\n\n'
+                        'Если вдруг захочешь вернуться — просто напиши нам «Привет».\n'
+                        'Мы будем ждать. 🐔❤️\n\n'
+                        'А если захочешь поесть — кнопки ниже всегда для тебя 👇'
+                    ),
+                    'keyboard': get_main_keyboard(),
+                    'random_id': 0
+                })
+            else:
+                vk_session.method('messages.send', {
+                    'user_id': user_id,
+                    'message': (
+                        'Хм, а ты и так не подписан на рассылку 🤔\n'
+                        'Но раз уж написал — держи кнопки! 👇'
+                    ),
+                    'keyboard': get_main_keyboard(),
+                    'random_id': 0
+                })
+
+        # ==============================
         # НЕЦЕЛЕВЫЕ ТЕМЫ
         # ==============================
-        is_work = any(w in msg for w in WORK_KEYWORDS)
-        is_partner = any(w in msg for w in PARTNERSHIP_KEYWORDS)
-        is_spam = any(w in msg for w in SPAM_KEYWORDS)
-
-        if is_work:
+        elif any(w in msg for w in WORK_KEYWORDS):
             vk_session.method('messages.send', {'user_id': user_id, 'message': WORK_RESPONSE, 'random_id': 0})
-        elif is_partner:
+        elif any(w in msg for w in PARTNERSHIP_KEYWORDS):
             vk_session.method('messages.send', {'user_id': user_id, 'message': PARTNERSHIP_RESPONSE, 'random_id': 0})
-        elif is_spam:
+        elif any(w in msg for w in SPAM_KEYWORDS):
             vk_session.method('messages.send', {'user_id': user_id, 'message': SPAM_RESPONSE, 'keyboard': get_main_keyboard(), 'random_id': 0})
 
         # ==============================
@@ -528,10 +606,18 @@ for event in longpoll.listen():
             })
 
         elif msg == '🌐 наш сайт' or 'сайт' in msg:
-            vk_session.method('messages.send', {'user_id': user_id, 'message': 'Сайт с меню и акциями:\n👉 https://курлайк.рф', 'random_id': 0})
+            vk_session.method('messages.send', {
+                'user_id': user_id,
+                'message': 'Сайт с меню и акциями:\n👉 https://курлайк.рф',
+                'random_id': 0
+            })
 
         elif msg == '✍️ оставить отзыв' or 'отзыв' in msg:
-            vk_session.method('messages.send', {'user_id': user_id, 'message': 'Нам важно твоё мнение! ❤️ Напиши отзыв:\n👉 https://vk.com/write58971558', 'random_id': 0})
+            vk_session.method('messages.send', {
+                'user_id': user_id,
+                'message': 'Нам важно твоё мнение! ❤️ Напиши отзыв:\n👉 https://vk.com/write58971558',
+                'random_id': 0
+            })
 
         elif msg == '😄 поднять настроение' or 'шутк' in msg or 'анекдот' in msg or 'комплимент' in msg or 'настроение' in msg:
             text = random.choice(JOKES) if random.choice([True, False]) else random.choice(COMPLIMENTS)
@@ -542,6 +628,19 @@ for event in longpoll.listen():
                 'random_id': 0
             })
 
+        # ==============================
+        # РЕАКЦИИ НА ПОЗИТИВ
+        # ==============================
+        elif any(word in msg for word in ['спасибо', 'круто', 'супер', 'вкусно', 'огонь', 'класс', 'люблю', 'обожаю', 'молодцы']):
+            vk_session.method('messages.send', {
+                'user_id': user_id,
+                'message': 'Ох, спасибо! 🥰 Нам очень приятно! Огонь! 🔥',
+                'random_id': 0
+            })
+
+        # ==============================
+        # УМНЫЙ ПОИСК
+        # ==============================
         elif 'ролл' in msg:
             vk_session.method('messages.send', {'user_id': user_id, 'message': 'Роллы! 🌯\n«Цыпа» (378 ₽), «Армянский» (404 ₽).\nВсё тут: https://курлайк.рф', 'random_id': 0})
         elif 'пицц' in msg:
@@ -551,6 +650,9 @@ for event in longpoll.listen():
         elif 'крыл' in msg:
             vk_session.method('messages.send', {'user_id': user_id, 'message': 'Крылышки! 🍗\n5 шт — 465 ₽, 10 шт — 899 ₽, 15 шт — 1302 ₽.', 'random_id': 0})
 
+        # ==============================
+        # ЕСЛИ БОТ НЕ ПОНЯЛ
+        # ==============================
         else:
             bonus = random.choice(JOKES) if random.choice([True, False]) else random.choice(COMPLIMENTS)
             vk_session.method('messages.send', {

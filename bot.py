@@ -215,7 +215,6 @@ def sync_subscribers_from_conversations():
 # ПРИВЕТСТВИЕ НОВОГО ПОДПИСЧИКА
 # ==============================
 def send_welcome_to_new_subscriber(user_id):
-    """Отправляет приветствие и промокод новому подписчику."""
     welcome_text = (
         "Привет! 👋 Добро пожаловать в «Курочку рядом»!\n\n"
         "Мы дарим тебе промокод на первый заказ:\n"
@@ -251,18 +250,16 @@ def save_user_state(state, user_id, user):
     save_json(STATE_FILE, state)
 
 # ==============================
-# ПРИЗЫ
+# ПРИЗЫ (ТОЛЬКО ЕДА, БЕЗ СКИДОК)
 # ==============================
 FORTUNE_REWARDS = [
-    {"text": "🎁 Соус в подарок к любому заказу!", "weight": 25, "tier": "common", "code_key": "sous"},
-    {"text": "😎 Комплимент от шефа: ты выглядишь на миллион! Но увы, без скидки 😅", "weight": 15, "tier": "common", "code_key": None},
-    {"text": "🍟 Картофель фри в подарок при заказе от 500 ₽!", "weight": 15, "tier": "common", "code_key": "fries"},
-    {"text": "💸 Скидка 5% на весь заказ!", "weight": 12, "tier": "uncommon", "code_key": "discount5"},
-    {"text": "🌯 Ролл Цыпа в подарок при заказе от 1000 ₽!", "weight": 6, "tier": "rare", "code_key": "roll"},
-    {"text": "💸 Скидка 10% на весь заказ!", "weight": 5, "tier": "rare", "code_key": "discount10"},
-    {"text": "🧀 Mac & Cheese Фрайс в подарок при заказе от 800 ₽!", "weight": 2.5, "tier": "epic", "code_key": "mac"},
-    {"text": "🍕 Пицца 25 см в подарок при заказе от 1500 ₽!", "weight": 1.3, "tier": "epic", "code_key": "pizza"},
-    {"text": "🔥 ДЖЕКПОТ! Скидка 25% на весь заказ!", "weight": 0.2, "tier": "legendary", "code_key": "jackpot"},
+    {"text": "🎁 Соус в подарок к любому заказу!", "weight": 30, "tier": "common", "code_key": "sous"},
+    {"text": "😎 Комплимент от шефа: ты выглядишь на миллион! Но увы, сегодня без подарка 😅", "weight": 20, "tier": "common", "code_key": None},
+    {"text": "🍟 Картофель фри в подарок при заказе от 500 ₽!", "weight": 20, "tier": "common", "code_key": "fries"},
+    {"text": "🌯 Ролл Цыпа в подарок при заказе от 1000 ₽!", "weight": 12, "tier": "uncommon", "code_key": "roll"},
+    {"text": "🧀 Mac & Cheese Фрайс в подарок при заказе от 800 ₽!", "weight": 8, "tier": "rare", "code_key": "mac"},
+    {"text": "🍕 Пицца 25 см в подарок при заказе от 1500 ₽!", "weight": 5, "tier": "epic", "code_key": "pizza"},
+    {"text": "🔥 ДЖЕКПОТ! Комбо «Курочка+подружка» в подарок при заказе от 2000 ₽!", "weight": 2, "tier": "legendary", "code_key": "kurochka"},
 ]
 
 TIER_EMOJI = {
@@ -458,165 +455,172 @@ def send_admin_stats(user_id):
     })
 
 # ==============================
-# ОСНОВНАЯ ЛОГИКА
+# ОСНОВНАЯ ЛОГИКА (с автопереподключением)
 # ==============================
-for event in longpoll.listen():
-    # Обработка нового подписчика
-    if event.type == VkEventType.GROUP_JOIN:
-        new_user_id = event.obj.user_id
-        send_welcome_to_new_subscriber(new_user_id)
-        continue
-
-    # Обработка сообщений
-    if event.type == VkEventType.MESSAGE_NEW and event.to_me:
-        msg = event.text.lower()
-        user_id = event.user_id
-
-        add_subscriber(user_id)
-
-        # АДМИН-КОМАНДЫ
-        if user_id == ADMIN_ID:
-            if msg.strip() in ['стата', 'статистика', 'stats']:
-                send_admin_stats(user_id)
+while True:
+    try:
+        for event in longpoll.listen():
+            # Обработка нового подписчика
+            if event.type == VkEventType.GROUP_JOIN:
+                new_user_id = event.obj.user_id
+                send_welcome_to_new_subscriber(new_user_id)
                 continue
-            if msg.strip() in ['подписчики', 'база', 'subs']:
-                subs = get_all_subscribers()
-                vk_session.method('messages.send', {
-                    'user_id': user_id,
-                    'message': f'📊 В базе {len(subs)} подписчиков.',
-                    'random_id': 0
-                })
-                continue
-            if msg.strip() in ['/sync', 'синхронизация', 'выгрузить']:
-                vk_session.method('messages.send', {
-                    'user_id': user_id,
-                    'message': '⏳ Собираю диалоги из сообщества...',
-                    'random_id': 0
-                })
-                added, skipped = sync_subscribers_from_conversations()
-                total = len(get_all_subscribers())
-                vk_session.method('messages.send', {
-                    'user_id': user_id,
-                    'message': f'✅ Готово!\n➕ Добавлено: {added}\n🚫 Пропущено: {skipped}\n👥 Всего: {total}',
-                    'random_id': 0
-                })
-                continue
-            if msg.startswith('/broadcast '):
-                broadcast_text = event.text[len('/broadcast '):].strip()
-                if not broadcast_text:
+
+            # Обработка сообщений
+            if event.type == VkEventType.MESSAGE_NEW and event.to_me:
+                msg = event.text.lower()
+                user_id = event.user_id
+
+                add_subscriber(user_id)
+
+                # АДМИН-КОМАНДЫ
+                if user_id == ADMIN_ID:
+                    if msg.strip() in ['стата', 'статистика', 'stats']:
+                        send_admin_stats(user_id)
+                        continue
+                    if msg.strip() in ['подписчики', 'база', 'subs']:
+                        subs = get_all_subscribers()
+                        vk_session.method('messages.send', {
+                            'user_id': user_id,
+                            'message': f'📊 В базе {len(subs)} подписчиков.',
+                            'random_id': 0
+                        })
+                        continue
+                    if msg.strip() in ['/sync', 'синхронизация', 'выгрузить']:
+                        vk_session.method('messages.send', {
+                            'user_id': user_id,
+                            'message': '⏳ Собираю диалоги из сообщества...',
+                            'random_id': 0
+                        })
+                        added, skipped = sync_subscribers_from_conversations()
+                        total = len(get_all_subscribers())
+                        vk_session.method('messages.send', {
+                            'user_id': user_id,
+                            'message': f'✅ Готово!\n➕ Добавлено: {added}\n🚫 Пропущено: {skipped}\n👥 Всего: {total}',
+                            'random_id': 0
+                        })
+                        continue
+                    if msg.startswith('/broadcast '):
+                        broadcast_text = event.text[len('/broadcast '):].strip()
+                        if not broadcast_text:
+                            vk_session.method('messages.send', {
+                                'user_id': user_id,
+                                'message': '❌ Текст пустой. Формат: /broadcast Привет!',
+                                'random_id': 0
+                            })
+                            continue
+                        vk_session.method('messages.send', {
+                            'user_id': user_id,
+                            'message': f'🚀 Начинаю рассылку {len(get_all_subscribers())} подписчикам...',
+                            'random_id': 0
+                        })
+                        sent, failed = broadcast(broadcast_text)
+                        vk_session.method('messages.send', {
+                            'user_id': user_id,
+                            'message': f'✅ Рассылка завершена!\n📨 Отправлено: {sent}\n❌ Ошибок: {failed}',
+                            'random_id': 0
+                        })
+                        continue
+
+                # ОТПИСКА
+                if msg == '💔 отписаться' or 'отписаться' in msg or 'отписка' in msg:
+                    was_subscribed = is_subscribed(user_id)
+                    if was_subscribed:
+                        remove_subscriber(user_id)
+                        with open(UNSUB_FILE, 'a', encoding='utf-8') as f:
+                            f.write(str(user_id) + '\n')
+                        vk_session.method('messages.send', {
+                            'user_id': user_id,
+                            'message': (
+                                '💔 Извини, что мы больше не сможем тебе писать...\n\n'
+                                'Ты был лучшим подписчиком! 🥺\n\n'
+                                'Если вдруг захочешь вернуться — просто напиши нам «Привет».\n'
+                                'Мы будем ждать. 🐔❤️'
+                            ),
+                            'keyboard': get_main_keyboard(),
+                            'random_id': 0
+                        })
+                    else:
+                        vk_session.method('messages.send', {
+                            'user_id': user_id,
+                            'message': 'Хм, а ты и так не подписан на рассылку 🤔\nНо раз уж написал — держи кнопки! 👇',
+                            'keyboard': get_main_keyboard(),
+                            'random_id': 0
+                        })
+
+                # НЕЦЕЛЕВЫЕ ТЕМЫ
+                elif any(w in msg for w in WORK_KEYWORDS):
+                    vk_session.method('messages.send', {'user_id': user_id, 'message': WORK_RESPONSE, 'random_id': 0})
+                elif any(w in msg for w in PARTNERSHIP_KEYWORDS):
+                    vk_session.method('messages.send', {'user_id': user_id, 'message': PARTNERSHIP_RESPONSE, 'random_id': 0})
+                elif any(w in msg for w in SPAM_KEYWORDS):
+                    vk_session.method('messages.send', {'user_id': user_id, 'message': SPAM_RESPONSE, 'keyboard': get_main_keyboard(), 'random_id': 0})
+
+                # ОСНОВНЫЕ КОМАНДЫ
+                elif msg in ['начать', 'привет', 'start', 'меню', 'помощь', 'здарова', 'хай']:
                     vk_session.method('messages.send', {
                         'user_id': user_id,
-                        'message': '❌ Текст пустой. Формат: /broadcast Привет!',
+                        'message': f'{random.choice(HELLO_PHRASES)}\n\nКстати, {random.choice(COMPLIMENTS)}',
+                        'keyboard': get_main_keyboard(),
                         'random_id': 0
                     })
-                    continue
-                vk_session.method('messages.send', {
-                    'user_id': user_id,
-                    'message': f'🚀 Начинаю рассылку {len(get_all_subscribers())} подписчикам...',
-                    'random_id': 0
-                })
-                sent, failed = broadcast(broadcast_text)
-                vk_session.method('messages.send', {
-                    'user_id': user_id,
-                    'message': f'✅ Рассылка завершена!\n📨 Отправлено: {sent}\n❌ Ошибок: {failed}',
-                    'random_id': 0
-                })
-                continue
-
-        # ОТПИСКА
-        if msg == '💔 отписаться' or 'отписаться' in msg or 'отписка' in msg:
-            was_subscribed = is_subscribed(user_id)
-            if was_subscribed:
-                remove_subscriber(user_id)
-                with open(UNSUB_FILE, 'a', encoding='utf-8') as f:
-                    f.write(str(user_id) + '\n')
-                vk_session.method('messages.send', {
-                    'user_id': user_id,
-                    'message': (
-                        '💔 Извини, что мы больше не сможем тебе писать...\n\n'
-                        'Ты был лучшим подписчиком! 🥺\n\n'
-                        'Если вдруг захочешь вернуться — просто напиши нам «Привет».\n'
-                        'Мы будем ждать. 🐔❤️'
-                    ),
-                    'keyboard': get_main_keyboard(),
-                    'random_id': 0
-                })
-            else:
-                vk_session.method('messages.send', {
-                    'user_id': user_id,
-                    'message': 'Хм, а ты и так не подписан на рассылку 🤔\nНо раз уж написал — держи кнопки! 👇',
-                    'keyboard': get_main_keyboard(),
-                    'random_id': 0
-                })
-
-        # НЕЦЕЛЕВЫЕ ТЕМЫ
-        elif any(w in msg for w in WORK_KEYWORDS):
-            vk_session.method('messages.send', {'user_id': user_id, 'message': WORK_RESPONSE, 'random_id': 0})
-        elif any(w in msg for w in PARTNERSHIP_KEYWORDS):
-            vk_session.method('messages.send', {'user_id': user_id, 'message': PARTNERSHIP_RESPONSE, 'random_id': 0})
-        elif any(w in msg for w in SPAM_KEYWORDS):
-            vk_session.method('messages.send', {'user_id': user_id, 'message': SPAM_RESPONSE, 'keyboard': get_main_keyboard(), 'random_id': 0})
-
-        # ОСНОВНЫЕ КОМАНДЫ
-        elif msg in ['начать', 'привет', 'start', 'меню', 'помощь', 'здарова', 'хай']:
-            vk_session.method('messages.send', {
-                'user_id': user_id,
-                'message': f'{random.choice(HELLO_PHRASES)}\n\nКстати, {random.choice(COMPLIMENTS)}',
-                'keyboard': get_main_keyboard(),
-                'random_id': 0
-            })
-        elif 'колесо' in msg or msg == '🎲 ещё раз' or 'фортуны' in msg or 'рандом' in msg or 'не знаю' in msg:
-            handle_fortune(user_id)
-        elif msg == '🛒 где заказать' or 'заказ' in msg:
-            vk_session.method('messages.send', {
-                'user_id': user_id,
-                'message': 'Заказать наши вкусняшки можно так:\n👇 Выбирай удобный способ!',
-                'keyboard': get_inline_keyboard(),
-                'random_id': 0
-            })
-        elif msg == '😋 что вкуснее?' or 'вкусн' in msg or 'посовет' in msg:
-            vk_session.method('messages.send', {
-                'user_id': user_id,
-                'message': 'Если хочешь новое:\n1. Комбо курочка+подружка (1263 ₽) — взрыв курицы! 🍗\n2. Mac & Cheese Фрайс (419 ₽) — сыр, рожки и фри! 🧀\n3. Баскет Пэли мэни пакьяо (631 ₽)! 🥟\nОгонь! 🔥',
-                'random_id': 0
-            })
-        elif msg == '🔥 что чаще берут?' or 'хит' in msg or 'популярн' in msg or 'берут' in msg:
-            vk_session.method('messages.send', {
-                'user_id': user_id,
-                'message': 'Бестселлеры:\n🥇 Цыпа (378 ₽)\n🥈 Курочка+друг (1263 ₽)\n🥉 Пицца «ТАНОС» (1981 ₽)\nПопробуй! 😉',
-                'random_id': 0
-            })
-        elif msg == '🌐 наш сайт' or 'сайт' in msg:
-            vk_session.method('messages.send', {'user_id': user_id, 'message': 'Сайт с меню и акциями:\n👉 https://курлайк.рф', 'random_id': 0})
-        elif msg == '✍️ оставить отзыв' or 'отзыв' in msg:
-            vk_session.method('messages.send', {'user_id': user_id, 'message': 'Нам важно твоё мнение! ❤️ Напиши отзыв:\n👉 https://vk.com/write58971558', 'random_id': 0})
-        elif msg == '😄 поднять настроение' or 'шутк' in msg or 'анекдот' in msg or 'комплимент' in msg or 'настроение' in msg:
-            text = random.choice(JOKES) if random.choice([True, False]) else random.choice(COMPLIMENTS)
-            vk_session.method('messages.send', {
-                'user_id': user_id,
-                'message': f'{random.choice(MOOD_PHRASES)}\n\n{text}',
-                'keyboard': get_main_keyboard(),
-                'random_id': 0
-            })
-        elif any(word in msg for word in ['спасибо', 'круто', 'супер', 'вкусно', 'огонь', 'класс', 'люблю', 'обожаю', 'молодцы']):
-            vk_session.method('messages.send', {
-                'user_id': user_id,
-                'message': 'Ох, спасибо! 🥰 Нам очень приятно! Огонь! 🔥',
-                'random_id': 0
-            })
-        elif 'ролл' in msg:
-            vk_session.method('messages.send', {'user_id': user_id, 'message': 'Роллы! 🌯\n«Цыпа» (378 ₽), «Армянский» (404 ₽).\nВсё тут: https://курлайк.рф', 'random_id': 0})
-        elif 'пицц' in msg:
-            vk_session.method('messages.send', {'user_id': user_id, 'message': 'Пицца! 🍕\n«Танос» (1981 ₽) или «Цезарь Power» (549 ₽).', 'random_id': 0})
-        elif 'сыр' in msg or 'мак' in msg:
-            vk_session.method('messages.send', {'user_id': user_id, 'message': 'Сырная тема! 🧀\n«Mac & Cheese Фрайс» (419 ₽) или «Мак &Чизос» (419 ₽).', 'random_id': 0})
-        elif 'крыл' in msg:
-            vk_session.method('messages.send', {'user_id': user_id, 'message': 'Крылышки! 🍗\n5 шт — 465 ₽, 10 шт — 899 ₽, 15 шт — 1302 ₽.', 'random_id': 0})
-        else:
-            bonus = random.choice(JOKES) if random.choice([True, False]) else random.choice(COMPLIMENTS)
-            vk_session.method('messages.send', {
-                'user_id': user_id,
-                'message': f'{bonus}\n\n{random.choice(UNKNOWN_PHRASES)}',
-                'keyboard': get_main_keyboard(),
-                'random_id': 0
-            })
+                elif 'колесо' in msg or msg == '🎲 ещё раз' or 'фортуны' in msg or 'рандом' in msg or 'не знаю' in msg:
+                    handle_fortune(user_id)
+                elif msg == '🛒 где заказать' or 'заказ' in msg:
+                    vk_session.method('messages.send', {
+                        'user_id': user_id,
+                        'message': 'Заказать наши вкусняшки можно так:\n👇 Выбирай удобный способ!',
+                        'keyboard': get_inline_keyboard(),
+                        'random_id': 0
+                    })
+                elif msg == '😋 что вкуснее?' or 'вкусн' in msg or 'посовет' in msg:
+                    vk_session.method('messages.send', {
+                        'user_id': user_id,
+                        'message': 'Если хочешь новое:\n1. Комбо курочка+подружка (1263 ₽) — взрыв курицы! 🍗\n2. Mac & Cheese Фрайс (419 ₽) — сыр, рожки и фри! 🧀\n3. Баскет Пэли мэни пакьяо (631 ₽)! 🥟\nОгонь! 🔥',
+                        'random_id': 0
+                    })
+                elif msg == '🔥 что чаще берут?' or 'хит' in msg or 'популярн' in msg or 'берут' in msg:
+                    vk_session.method('messages.send', {
+                        'user_id': user_id,
+                        'message': 'Бестселлеры:\n🥇 Цыпа (378 ₽)\n🥈 Курочка+друг (1263 ₽)\n🥉 Пицца «ТАНОС» (1981 ₽)\nПопробуй! 😉',
+                        'random_id': 0
+                    })
+                elif msg == '🌐 наш сайт' or 'сайт' in msg:
+                    vk_session.method('messages.send', {'user_id': user_id, 'message': 'Сайт с меню и акциями:\n👉 https://курлайк.рф', 'random_id': 0})
+                elif msg == '✍️ оставить отзыв' or 'отзыв' in msg:
+                    vk_session.method('messages.send', {'user_id': user_id, 'message': 'Нам важно твоё мнение! ❤️ Напиши отзыв:\n👉 https://vk.com/write58971558', 'random_id': 0})
+                elif msg == '😄 поднять настроение' or 'шутк' in msg or 'анекдот' in msg or 'комплимент' in msg or 'настроение' in msg:
+                    text = random.choice(JOKES) if random.choice([True, False]) else random.choice(COMPLIMENTS)
+                    vk_session.method('messages.send', {
+                        'user_id': user_id,
+                        'message': f'{random.choice(MOOD_PHRASES)}\n\n{text}',
+                        'keyboard': get_main_keyboard(),
+                        'random_id': 0
+                    })
+                elif any(word in msg for word in ['спасибо', 'круто', 'супер', 'вкусно', 'огонь', 'класс', 'люблю', 'обожаю', 'молодцы']):
+                    vk_session.method('messages.send', {
+                        'user_id': user_id,
+                        'message': 'Ох, спасибо! 🥰 Нам очень приятно! Огонь! 🔥',
+                        'random_id': 0
+                    })
+                elif 'ролл' in msg:
+                    vk_session.method('messages.send', {'user_id': user_id, 'message': 'Роллы! 🌯\n«Цыпа» (378 ₽), «Армянский» (404 ₽).\nВсё тут: https://курлайк.рф', 'random_id': 0})
+                elif 'пицц' in msg:
+                    vk_session.method('messages.send', {'user_id': user_id, 'message': 'Пицца! 🍕\n«Танос» (1981 ₽) или «Цезарь Power» (549 ₽).', 'random_id': 0})
+                elif 'сыр' in msg or 'мак' in msg:
+                    vk_session.method('messages.send', {'user_id': user_id, 'message': 'Сырная тема! 🧀\n«Mac & Cheese Фрайс» (419 ₽) или «Мак &Чизос» (419 ₽).', 'random_id': 0})
+                elif 'крыл' in msg:
+                    vk_session.method('messages.send', {'user_id': user_id, 'message': 'Крылышки! 🍗\n5 шт — 465 ₽, 10 шт — 899 ₽, 15 шт — 1302 ₽.', 'random_id': 0})
+                else:
+                    bonus = random.choice(JOKES) if random.choice([True, False]) else random.choice(COMPLIMENTS)
+                    vk_session.method('messages.send', {
+                        'user_id': user_id,
+                        'message': f'{bonus}\n\n{random.choice(UNKNOWN_PHRASES)}',
+                        'keyboard': get_main_keyboard(),
+                        'random_id': 0
+                    })
+    except Exception as e:
+        print(f"⚠️ Соединение оборвалось: {e}")
+        print("⏳ Переподключение через 5 секунд...")
+        time.sleep(5)
+        print("🔄 Перезапуск опроса...")

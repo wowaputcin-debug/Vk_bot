@@ -4,7 +4,7 @@ import time
 import random
 import vk_api
 from datetime import datetime
-from vk_api.longpoll import VkLongPoll, VkEventType
+from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 
 # ==============================
@@ -12,7 +12,7 @@ from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 # ==============================
 TOKEN = os.getenv('VK_TOKEN')
 ADMIN_ID = 58971558
-GROUP_ID = 229326386  # ← ЗАМЕНИ НА СВОЙ ID ГРУППЫ!
+GROUP_ID = 229326386  # ← Твой ID группы
 MAX_ATTEMPTS = 3
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -23,14 +23,23 @@ SUBSCRIBERS_FILE = os.path.join(BASE_DIR, 'subscribers.txt')
 UNSUB_FILE = os.path.join(BASE_DIR, 'unsubscribed.txt')
 
 # ==============================
-# ПОДКЛЮЧЕНИЕ
+# ПОДКЛЮЧЕНИЕ (с отладкой)
 # ==============================
-print("Бот запускается...")
-vk_session = vk_api.VkApi(token=TOKEN)
-
-# mode=234 — включает события группы (group_join)
-longpoll = VkLongPoll(vk_session, group_id=GROUP_ID, mode=234)
-print("Бот готов и ждет сообщений!")
+print("⏳ Бот запускается...")
+try:
+    vk_session = vk_api.VkApi(token=TOKEN)
+    print("✅ Авторизация по токену прошла успешно.")
+    
+    group_info = vk_session.method('groups.getById', {'group_id': GROUP_ID})
+    print(f"✅ Подключение к группе: {group_info[0]['name']} (ID: {GROUP_ID})")
+    
+    longpoll = VkBotLongPoll(vk_session, group_id=GROUP_ID)
+    print("✅ Bot LongPoll успешно инициализирован!")
+    print("🚀 Бот готов и ждет сообщений!")
+except Exception as e:
+    print(f"❌ ОШИБКА ПРИ ЗАПУСКЕ: {e}")
+    print("Проверь GROUP_ID и права токена!")
+    exit()
 
 # ==============================
 # РАБОТА С ФАЙЛАМИ
@@ -150,12 +159,6 @@ def sync_subscribers_from_conversations():
     added = 0
     skipped = 0
     offset = 0
-    try:
-        group_info = vk_session.method('groups.getById')
-        group_id = group_info[0]['id']
-    except Exception as e:
-        print(f"Не удалось получить ID группы: {e}")
-        return 0, 0
     existing = set()
     if os.path.exists(SUBSCRIBERS_FILE):
         with open(SUBSCRIBERS_FILE, 'r', encoding='utf-8') as f:
@@ -168,7 +171,7 @@ def sync_subscribers_from_conversations():
     while True:
         try:
             conversations = vk_session.method('messages.getConversations', {
-                'group_id': group_id,
+                'group_id': GROUP_ID,
                 'count': 200,
                 'offset': offset,
                 'filter': 'all'
@@ -191,7 +194,7 @@ def sync_subscribers_from_conversations():
             if uid_str not in existing:
                 try:
                     allowed = vk_session.method('messages.isMessagesFromGroupAllowed', {
-                        'group_id': group_id,
+                        'group_id': GROUP_ID,
                         'user_id': peer_id
                     })
                     if allowed.get('is_allowed'):
@@ -250,7 +253,7 @@ def save_user_state(state, user_id, user):
     save_json(STATE_FILE, state)
 
 # ==============================
-# ПРИЗЫ (ТОЛЬКО ЕДА, БЕЗ СКИДОК)
+# ПРИЗЫ
 # ==============================
 FORTUNE_REWARDS = [
     {"text": "🎁 Соус в подарок к любому заказу!", "weight": 30, "tier": "common", "code_key": "sous"},
@@ -262,13 +265,7 @@ FORTUNE_REWARDS = [
     {"text": "🔥 ДЖЕКПОТ! Комбо «Курочка+подружка» в подарок при заказе от 2000 ₽!", "weight": 2, "tier": "legendary", "code_key": "kurochka"},
 ]
 
-TIER_EMOJI = {
-    'common': '🎈',
-    'uncommon': '🎁',
-    'rare': '💎',
-    'epic': '👑',
-    'legendary': '🔥'
-}
+TIER_EMOJI = {'common': '🎈', 'uncommon': '🎁', 'rare': '💎', 'epic': '👑', 'legendary': '🔥'}
 
 def spin_wheel():
     total = sum(r['weight'] for r in FORTUNE_REWARDS)
@@ -292,36 +289,15 @@ JOKES = [
     "— Почему картошка фри в топе?\n— Она знает подход к каждому! 🍟",
     "— Почему наши крылья вкусные?\n— Прошли курсы повышения хрусткости! 🍗📚",
 ]
-
 COMPLIMENTS = [
-    "Ты сегодня просто огонь! 🔥",
-    "С тобой приятно иметь дело! 😎",
-    "У тебя отличный вкус! 🍗",
-    "Ты выглядишь на миллион! 💰",
-    "Ты легенда! 🏆",
-    "Твоя харизма сильнее соуса остро-вкусно! 🌶️",
+    "Ты сегодня просто огонь! 🔥", "С тобой приятно иметь дело! 😎",
+    "У тебя отличный вкус! 🍗", "Ты выглядишь на миллион! 💰",
+    "Ты легенда! 🏆", "Твоя харизма сильнее соуса остро-вкусно! 🌶️",
     "Спасибо, что ты есть! Без тебя наша кухня была бы скучной. 🍳❤️",
 ]
-
-HELLO_PHRASES = [
-    'Здарова! 👋 Голоден? Жми кнопки!',
-    'Привет! 👋 Что будем кушать сегодня? 😋',
-    'О, привет! 👋 Соскучился по вкусняшкам?',
-    'Курочка рядом на связи! 🐔',
-]
-
-UNKNOWN_PHRASES = [
-    'Хм, сложный вопрос! 🤔 Давай лучше закажем вкусное. Жми кнопки! 👇',
-    'Я пока учусь понимать людей. 😅 Тыкни на кнопку!',
-    'Не, ну я умный, но не настолько. 😂 Давай закажем?',
-    'Ого, ты меня озадачил! 🤯 Но я всё равно знаю, что тебе нужно — вкусная еда!',
-]
-
-MOOD_PHRASES = [
-    "Держи позитив! 😄",
-    "Лови заряд настроения! ⚡",
-    "Специально для тебя: 🎁",
-]
+HELLO_PHRASES = ['Здарова! 👋 Голоден? Жми кнопки!', 'Привет! 👋 Что будем кушать сегодня? 😋', 'О, привет! 👋 Соскучился по вкусняшкам?', 'Курочка рядом на связи! 🐔']
+UNKNOWN_PHRASES = ['Хм, сложный вопрос! 🤔 Давай лучше закажем вкусное. Жми кнопки! 👇', 'Я пока учусь понимать людей. 😅 Тыкни на кнопку!', 'Не, ну я умный, но не настолько. 😂 Давай закажем?', 'Ого, ты меня озадачил! 🤯 Но я всё равно знаю, что тебе нужно — вкусная еда!']
+MOOD_PHRASES = ["Держи позитив! 😄", "Лови заряд настроения! ⚡", "Специально для тебя: 🎁"]
 
 WORK_RESPONSE = 'Ого, ты хочешь к нам в команду? 🔥\n\nПо вопросам работы пиши сюда:\n👉 https://vk.com/write58971558'
 PARTNERSHIP_RESPONSE = 'Спасибо за предложение! 🤝\n\nПо вопросам сотрудничества и рекламы:\n👉 https://vk.com/write58971558'
@@ -373,19 +349,13 @@ def handle_fortune(user_id):
     state, user = get_user_state(user_id)
     if user.get('last_msg_id'):
         try:
-            vk_session.method('messages.delete', {
-                'message_ids': user['last_msg_id'],
-                'delete_for_all': 1
-            })
+            vk_session.method('messages.delete', {'message_ids': user['last_msg_id'], 'delete_for_all': 1})
         except Exception as e:
             print(f"Не удалось удалить сообщение: {e}")
         user['last_msg_id'] = None
     if user['attempts'] <= 0:
         response = vk_session.method('messages.send', {
-            'user_id': user_id,
-            'message': '😢 Ты уже использовал все 3 попытки на сегодня!\n\nВозвращайся завтра за новой порцией удачи. А пока — закажи что-нибудь вкусное в приложении 🍗',
-            'keyboard': get_inline_keyboard(),
-            'random_id': 0
+            'user_id': user_id, 'message': '😢 Ты уже использовал все 3 попытки на сегодня!\n\nВозвращайся завтра за новой порцией удачи. А пока — закажи что-нибудь вкусное в приложении 🍗', 'keyboard': get_inline_keyboard(), 'random_id': 0
         })
         user['last_msg_id'] = response
         save_user_state(state, user_id, user)
@@ -401,24 +371,12 @@ def handle_fortune(user_id):
         used = load_json(USED_FILE)
         code = get_next_code(pools, used, reward['code_key'])
         if code:
-            used[code] = {
-                'user_id': user_id,
-                'date': user['date'],
-                'reward': reward['code_key'],
-                'text': reward['text']
-            }
+            used[code] = {'user_id': user_id, 'date': user['date'], 'reward': reward['code_key'], 'text': reward['text']}
             save_json(USED_FILE, used)
             code_given = code
-            message += (
-                f"🎟 Твой промокод: {code}\n\n"
-                f"📲 Введи его в приложении или на сайте при оформлении заказа — скидка применится автоматически!\n\n"
-            )
+            message += f"🎟 Твой промокод: {code}\n\n📲 Введи его в приложении или на сайте при оформлении заказа — скидка применится автоматически!\n\n"
         else:
-            message = (
-                f"🎰 Крутим барабан...\n\n"
-                f"😎 Ой, а призы на сегодня закончились! Но ты всё равно классный: "
-                f"{random.choice(COMPLIMENTS)}\n\n"
-            )
+            message = f"🎰 Крутим барабан...\n\n😎 Ой, а призы на сегодня закончились! Но ты всё равно классный: {random.choice(COMPLIMENTS)}\n\n"
     if code_given:
         message += "👇 Заказывай прямо тут:"
         keyboard = get_fortune_inline_keyboard(attempts_left)
@@ -427,12 +385,7 @@ def handle_fortune(user_id):
             keyboard = get_fortune_inline_keyboard(attempts_left)
         else:
             keyboard = get_inline_keyboard()
-    response = vk_session.method('messages.send', {
-        'user_id': user_id,
-        'message': message,
-        'keyboard': keyboard,
-        'random_id': 0
-    })
+    response = vk_session.method('messages.send', {'user_id': user_id, 'message': message, 'keyboard': keyboard, 'random_id': 0})
     user['last_msg_id'] = response
     save_user_state(state, user_id, user)
 
@@ -448,28 +401,39 @@ def send_admin_stats(user_id):
         lines.append(f"• {key}: свободно {free} из {len(codes)}")
     lines.append(f"\nВсего использовано: {len(used)}")
     lines.append(f"👥 Подписчиков: {len(get_all_subscribers())}")
-    vk_session.method('messages.send', {
-        'user_id': user_id,
-        'message': '\n'.join(lines),
-        'random_id': 0
-    })
+    vk_session.method('messages.send', {'user_id': user_id, 'message': '\n'.join(lines), 'random_id': 0})
 
 # ==============================
-# ОСНОВНАЯ ЛОГИКА (с автопереподключением)
+# ОСНОВНАЯ ЛОГИКА
 # ==============================
+print("⏳ Начинаем слушать события...")
 while True:
     try:
         for event in longpoll.listen():
-            # Обработка нового подписчика
-            if event.type == VkEventType.GROUP_JOIN:
-                new_user_id = event.obj.user_id
+            # Обработка нового подписчика (вступление в группу)
+            if event.type == VkBotEventType.GROUP_JOIN:
+                new_user_id = event.object.user_id
+                print(f"👋 Новый подписчик! ID: {new_user_id}")
                 send_welcome_to_new_subscriber(new_user_id)
                 continue
 
-            # Обработка сообщений
-            if event.type == VkEventType.MESSAGE_NEW and event.to_me:
-                msg = event.text.lower()
-                user_id = event.user_id
+            # Обработка новых сообщений
+            if event.type == VkBotEventType.MESSAGE_NEW:
+                message_obj = event.object.message
+                
+                if message_obj.get('out') == 1:
+                    continue
+                
+                if message_obj.get('peer_id') != message_obj.get('from_id'):
+                    continue
+
+                user_id = message_obj.get('from_id')
+                msg = message_obj.get('text', '').lower()
+
+                if not msg:
+                    continue
+
+                print(f"💬 Сообщение от {user_id}: {msg}")
 
                 add_subscriber(user_id)
 
@@ -480,46 +444,22 @@ while True:
                         continue
                     if msg.strip() in ['подписчики', 'база', 'subs']:
                         subs = get_all_subscribers()
-                        vk_session.method('messages.send', {
-                            'user_id': user_id,
-                            'message': f'📊 В базе {len(subs)} подписчиков.',
-                            'random_id': 0
-                        })
+                        vk_session.method('messages.send', {'user_id': user_id, 'message': f'📊 В базе {len(subs)} подписчиков.', 'random_id': 0})
                         continue
                     if msg.strip() in ['/sync', 'синхронизация', 'выгрузить']:
-                        vk_session.method('messages.send', {
-                            'user_id': user_id,
-                            'message': '⏳ Собираю диалоги из сообщества...',
-                            'random_id': 0
-                        })
+                        vk_session.method('messages.send', {'user_id': user_id, 'message': '⏳ Собираю диалоги из сообщества...', 'random_id': 0})
                         added, skipped = sync_subscribers_from_conversations()
                         total = len(get_all_subscribers())
-                        vk_session.method('messages.send', {
-                            'user_id': user_id,
-                            'message': f'✅ Готово!\n➕ Добавлено: {added}\n🚫 Пропущено: {skipped}\n👥 Всего: {total}',
-                            'random_id': 0
-                        })
+                        vk_session.method('messages.send', {'user_id': user_id, 'message': f'✅ Готово!\n➕ Добавлено: {added}\n🚫 Пропущено: {skipped}\n👥 Всего: {total}', 'random_id': 0})
                         continue
                     if msg.startswith('/broadcast '):
-                        broadcast_text = event.text[len('/broadcast '):].strip()
+                        broadcast_text = message_obj.get('text')[len('/broadcast '):].strip()
                         if not broadcast_text:
-                            vk_session.method('messages.send', {
-                                'user_id': user_id,
-                                'message': '❌ Текст пустой. Формат: /broadcast Привет!',
-                                'random_id': 0
-                            })
+                            vk_session.method('messages.send', {'user_id': user_id, 'message': '❌ Текст пустой. Формат: /broadcast Привет!', 'random_id': 0})
                             continue
-                        vk_session.method('messages.send', {
-                            'user_id': user_id,
-                            'message': f'🚀 Начинаю рассылку {len(get_all_subscribers())} подписчикам...',
-                            'random_id': 0
-                        })
+                        vk_session.method('messages.send', {'user_id': user_id, 'message': f'🚀 Начинаю рассылку {len(get_all_subscribers())} подписчикам...', 'random_id': 0})
                         sent, failed = broadcast(broadcast_text)
-                        vk_session.method('messages.send', {
-                            'user_id': user_id,
-                            'message': f'✅ Рассылка завершена!\n📨 Отправлено: {sent}\n❌ Ошибок: {failed}',
-                            'random_id': 0
-                        })
+                        vk_session.method('messages.send', {'user_id': user_id, 'message': f'✅ Рассылка завершена!\n📨 Отправлено: {sent}\n❌ Ошибок: {failed}', 'random_id': 0})
                         continue
 
                 # ОТПИСКА
@@ -529,24 +469,9 @@ while True:
                         remove_subscriber(user_id)
                         with open(UNSUB_FILE, 'a', encoding='utf-8') as f:
                             f.write(str(user_id) + '\n')
-                        vk_session.method('messages.send', {
-                            'user_id': user_id,
-                            'message': (
-                                '💔 Извини, что мы больше не сможем тебе писать...\n\n'
-                                'Ты был лучшим подписчиком! 🥺\n\n'
-                                'Если вдруг захочешь вернуться — просто напиши нам «Привет».\n'
-                                'Мы будем ждать. 🐔❤️'
-                            ),
-                            'keyboard': get_main_keyboard(),
-                            'random_id': 0
-                        })
+                        vk_session.method('messages.send', {'user_id': user_id, 'message': '💔 Извини, что мы больше не сможем тебе писать...\n\nТы был лучшим подписчиком! 🥺\n\nЕсли вдруг захочешь вернуться — просто напиши нам «Привет».\nМы будем ждать. 🐔❤️', 'keyboard': get_main_keyboard(), 'random_id': 0})
                     else:
-                        vk_session.method('messages.send', {
-                            'user_id': user_id,
-                            'message': 'Хм, а ты и так не подписан на рассылку 🤔\nНо раз уж написал — держи кнопки! 👇',
-                            'keyboard': get_main_keyboard(),
-                            'random_id': 0
-                        })
+                        vk_session.method('messages.send', {'user_id': user_id, 'message': 'Хм, а ты и так не подписан на рассылку 🤔\nНо раз уж написал — держи кнопки! 👇', 'keyboard': get_main_keyboard(), 'random_id': 0})
 
                 # НЕЦЕЛЕВЫЕ ТЕМЫ
                 elif any(w in msg for w in WORK_KEYWORDS):
@@ -558,51 +483,24 @@ while True:
 
                 # ОСНОВНЫЕ КОМАНДЫ
                 elif msg in ['начать', 'привет', 'start', 'меню', 'помощь', 'здарова', 'хай']:
-                    vk_session.method('messages.send', {
-                        'user_id': user_id,
-                        'message': f'{random.choice(HELLO_PHRASES)}\n\nКстати, {random.choice(COMPLIMENTS)}',
-                        'keyboard': get_main_keyboard(),
-                        'random_id': 0
-                    })
+                    vk_session.method('messages.send', {'user_id': user_id, 'message': f'{random.choice(HELLO_PHRASES)}\n\nКстати, {random.choice(COMPLIMENTS)}', 'keyboard': get_main_keyboard(), 'random_id': 0})
                 elif 'колесо' in msg or msg == '🎲 ещё раз' or 'фортуны' in msg or 'рандом' in msg or 'не знаю' in msg:
                     handle_fortune(user_id)
                 elif msg == '🛒 где заказать' or 'заказ' in msg:
-                    vk_session.method('messages.send', {
-                        'user_id': user_id,
-                        'message': 'Заказать наши вкусняшки можно так:\n👇 Выбирай удобный способ!',
-                        'keyboard': get_inline_keyboard(),
-                        'random_id': 0
-                    })
+                    vk_session.method('messages.send', {'user_id': user_id, 'message': 'Заказать наши вкусняшки можно так:\n👇 Выбирай удобный способ!', 'keyboard': get_inline_keyboard(), 'random_id': 0})
                 elif msg == '😋 что вкуснее?' or 'вкусн' in msg or 'посовет' in msg:
-                    vk_session.method('messages.send', {
-                        'user_id': user_id,
-                        'message': 'Если хочешь новое:\n1. Комбо курочка+подружка (1263 ₽) — взрыв курицы! 🍗\n2. Mac & Cheese Фрайс (419 ₽) — сыр, рожки и фри! 🧀\n3. Баскет Пэли мэни пакьяо (631 ₽)! 🥟\nОгонь! 🔥',
-                        'random_id': 0
-                    })
+                    vk_session.method('messages.send', {'user_id': user_id, 'message': 'Если хочешь новое:\n1. Комбо курочка+подружка (1263 ₽) — взрыв курицы! 🍗\n2. Mac & Cheese Фрайс (419 ₽) — сыр, рожки и фри! 🧀\n3. Баскет Пэли мэни пакьяо (631 ₽)! 🥟\nОгонь! 🔥', 'random_id': 0})
                 elif msg == '🔥 что чаще берут?' or 'хит' in msg or 'популярн' in msg or 'берут' in msg:
-                    vk_session.method('messages.send', {
-                        'user_id': user_id,
-                        'message': 'Бестселлеры:\n🥇 Цыпа (378 ₽)\n🥈 Курочка+друг (1263 ₽)\n🥉 Пицца «ТАНОС» (1981 ₽)\nПопробуй! 😉',
-                        'random_id': 0
-                    })
+                    vk_session.method('messages.send', {'user_id': user_id, 'message': 'Бестселлеры:\n🥇 Цыпа (378 ₽)\n🥈 Курочка+друг (1263 ₽)\n🥉 Пицца «ТАНОС» (1981 ₽)\nПопробуй! 😉', 'random_id': 0})
                 elif msg == '🌐 наш сайт' or 'сайт' in msg:
                     vk_session.method('messages.send', {'user_id': user_id, 'message': 'Сайт с меню и акциями:\n👉 https://курлайк.рф', 'random_id': 0})
                 elif msg == '✍️ оставить отзыв' or 'отзыв' in msg:
                     vk_session.method('messages.send', {'user_id': user_id, 'message': 'Нам важно твоё мнение! ❤️ Напиши отзыв:\n👉 https://vk.com/write58971558', 'random_id': 0})
                 elif msg == '😄 поднять настроение' or 'шутк' in msg or 'анекдот' in msg or 'комплимент' in msg or 'настроение' in msg:
                     text = random.choice(JOKES) if random.choice([True, False]) else random.choice(COMPLIMENTS)
-                    vk_session.method('messages.send', {
-                        'user_id': user_id,
-                        'message': f'{random.choice(MOOD_PHRASES)}\n\n{text}',
-                        'keyboard': get_main_keyboard(),
-                        'random_id': 0
-                    })
+                    vk_session.method('messages.send', {'user_id': user_id, 'message': f'{random.choice(MOOD_PHRASES)}\n\n{text}', 'keyboard': get_main_keyboard(), 'random_id': 0})
                 elif any(word in msg for word in ['спасибо', 'круто', 'супер', 'вкусно', 'огонь', 'класс', 'люблю', 'обожаю', 'молодцы']):
-                    vk_session.method('messages.send', {
-                        'user_id': user_id,
-                        'message': 'Ох, спасибо! 🥰 Нам очень приятно! Огонь! 🔥',
-                        'random_id': 0
-                    })
+                    vk_session.method('messages.send', {'user_id': user_id, 'message': 'Ох, спасибо! 🥰 Нам очень приятно! Огонь! 🔥', 'random_id': 0})
                 elif 'ролл' in msg:
                     vk_session.method('messages.send', {'user_id': user_id, 'message': 'Роллы! 🌯\n«Цыпа» (378 ₽), «Армянский» (404 ₽).\nВсё тут: https://курлайк.рф', 'random_id': 0})
                 elif 'пицц' in msg:
@@ -613,14 +511,7 @@ while True:
                     vk_session.method('messages.send', {'user_id': user_id, 'message': 'Крылышки! 🍗\n5 шт — 465 ₽, 10 шт — 899 ₽, 15 шт — 1302 ₽.', 'random_id': 0})
                 else:
                     bonus = random.choice(JOKES) if random.choice([True, False]) else random.choice(COMPLIMENTS)
-                    vk_session.method('messages.send', {
-                        'user_id': user_id,
-                        'message': f'{bonus}\n\n{random.choice(UNKNOWN_PHRASES)}',
-                        'keyboard': get_main_keyboard(),
-                        'random_id': 0
-                    })
+                    vk_session.method('messages.send', {'user_id': user_id, 'message': f'{bonus}\n\n{random.choice(UNKNOWN_PHRASES)}', 'keyboard': get_main_keyboard(), 'random_id': 0})
     except Exception as e:
-        print(f"⚠️ Соединение оборвалось: {e}")
-        print("⏳ Переподключение через 5 секунд...")
+        print(f"⚠️ Ошибка: {e}")
         time.sleep(5)
-        print("🔄 Перезапуск опроса...")

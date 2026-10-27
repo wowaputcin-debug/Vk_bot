@@ -12,7 +12,7 @@ from vk_api.keyboard import VkKeyboard, VkKeyboardColor
 # ==============================
 TOKEN = os.getenv('VK_TOKEN')
 ADMIN_ID = 58971558
-GROUP_ID = 229326386  # ← Твой ID группы
+GROUP_ID = 229326386  # ← Твой ID группы (уже вписан)
 MAX_ATTEMPTS = 3
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -23,7 +23,7 @@ SUBSCRIBERS_FILE = os.path.join(BASE_DIR, 'subscribers.txt')
 UNSUB_FILE = os.path.join(BASE_DIR, 'unsubscribed.txt')
 
 # ==============================
-# ПОДКЛЮЧЕНИЕ (с отладкой)
+# ПОДКЛЮЧЕНИЕ
 # ==============================
 print("⏳ Бот запускается...")
 try:
@@ -146,6 +146,7 @@ def broadcast(text):
             vk_session.method('messages.send', {
                 'user_id': int(uid),
                 'message': text,
+                'keyboard': get_inline_keyboard(), # Кнопки приложения/сайта
                 'random_id': 0
             })
             sent += 1
@@ -253,7 +254,7 @@ def save_user_state(state, user_id, user):
     save_json(STATE_FILE, state)
 
 # ==============================
-# ПРИЗЫ
+# ПРИЗЫ (ТОЛЬКО ЕДА)
 # ==============================
 FORTUNE_REWARDS = [
     {"text": "🎁 Соус в подарок к любому заказу!", "weight": 30, "tier": "common", "code_key": "sous"},
@@ -421,21 +422,37 @@ while True:
             if event.type == VkBotEventType.MESSAGE_NEW:
                 message_obj = event.object.message
                 
+                # Игнорируем сообщения от самого сообщества
                 if message_obj.get('out') == 1:
                     continue
                 
+                # Игнорируем беседы
                 if message_obj.get('peer_id') != message_obj.get('from_id'):
                     continue
 
                 user_id = message_obj.get('from_id')
                 msg = message_obj.get('text', '').lower()
 
-                if not msg:
+                # Проверка на вложения (ответ на сторис)
+                attachments = message_obj.get('attachments', [])
+                has_story = any(att.get('type') == 'story' for att in attachments)
+
+                if not msg and not has_story:
                     continue
 
-                print(f"💬 Сообщение от {user_id}: {msg}")
+                print(f"💬 Сообщение от {user_id}: {msg if msg else '[Стикер/Сторис]'}")
 
                 add_subscriber(user_id)
+
+                # Обработка ответа на сторис
+                if has_story and not msg:
+                    vk_session.method('messages.send', {
+                        'user_id': user_id,
+                        'message': 'Ого, ты ответил на нашу сторис! 🎉 Спасибо! Жми кнопки ниже, чтобы заказать что-нибудь вкусное 👇',
+                        'keyboard': get_main_keyboard(),
+                        'random_id': 0
+                    })
+                    continue
 
                 # АДМИН-КОМАНДЫ
                 if user_id == ADMIN_ID:

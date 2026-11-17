@@ -229,7 +229,7 @@ def send_welcome_to_new_subscriber(user_id):
         vk_session.method('messages.send', {
             'user_id': user_id,
             'message': welcome_text,
-            'intent': 'confirmed_notification',  # <-- ИСПРАВЛЕНА ОШИБКА ИЗ ЛОГОВ
+            'intent': 'confirmed_notification',
             'random_id': 0
         })
         print(f"Приветствие отправлено: {user_id}")
@@ -306,7 +306,8 @@ PROBLEM_RESPONSE = 'Ой, кажется, у тебя проблема с зак
 WORK_KEYWORDS = ['вакан', 'устро', 'резюме', 'трудоустро', 'зарплат', 'подработ', 'повар', 'курьер', 'ищу работу']
 PARTNERSHIP_KEYWORDS = ['сотруднич', 'партнер', 'партнёр', 'реклам', 'предложени', 'бартер', 'инвестиц', 'коллаб', 'продвижени', 'пиар']
 SPAM_KEYWORDS = ['крипт', 'биткоин', 'заработок', 'пассивный доход', 'трейдинг', 'казино', 'ставк', 'форекс', 'накрутк']
-PROBLEM_KEYWORDS = ['не положили', 'забыли', 'проблема', 'жалоба', 'оператор', 'человек', 'ошибка', 'не привезли', 'опаздывает', 'брак', 'соус']
+# ДОБАВИЛ БОЛЬШЕ СЛОВ ДЛЯ ЖАЛОБ
+PROBLEM_KEYWORDS = ['не положили', 'забыли', 'проблема', 'жалоба', 'оператор', 'человек', 'ошибка', 'не привезли', 'опаздывает', 'брак', 'соус', 'не то', 'холодное', 'испорчен']
 
 # ==============================
 # КЛАВИАТУРЫ
@@ -431,7 +432,6 @@ while True:
                 user_id = message_obj.get('from_id')
                 msg = message_obj.get('text', '').lower()
 
-                # ПРОВЕРКА СТИКЕРОВ И СТОРИС
                 attachments = message_obj.get('attachments', [])
                 has_story = any(att.get('type') == 'story' for att in attachments)
                 has_sticker = any(att.get('type') == 'sticker' for att in attachments)
@@ -489,6 +489,10 @@ while True:
                     else:
                         vk_session.method('messages.send', {'user_id': user_id, 'message': 'Хм, а ты и так не подписан на рассылку 🤔\nНо раз уж написал — держи кнопки! 👇', 'keyboard': get_main_keyboard(), 'random_id': 0})
 
+                # --- ПРОБЛЕМЫ С ЗАКАЗОМ И ЖАЛОБЫ (ВЫСОКИЙ ПРИОРИТЕТ) ---
+                elif any(w in msg for w in PROBLEM_KEYWORDS):
+                    vk_session.method('messages.send', {'user_id': user_id, 'message': PROBLEM_RESPONSE, 'random_id': 0})
+
                 # --- ГРАФИК РАБОТЫ ---
                 elif any(w in msg for w in ['работаете', 'до скольки', 'во сколько', 'график', 'открыты', 'закрыты', 'обед']):
                     vk_session.method('messages.send', {
@@ -496,10 +500,6 @@ while True:
                         'message': 'Мы работаем каждый день с 10:00 до 22:00! 🕒 Ждем твой заказ! 🍗',
                         'random_id': 0
                     })
-
-                # --- ПРОБЛЕМЫ С ЗАКАЗОМ И ЖАЛОБЫ ---
-                elif any(w in msg for w in PROBLEM_KEYWORDS):
-                    vk_session.method('messages.send', {'user_id': user_id, 'message': PROBLEM_RESPONSE, 'random_id': 0})
 
                 # НЕЦЕЛЕВЫЕ ТЕМЫ
                 elif any(w in msg for w in WORK_KEYWORDS):
@@ -514,8 +514,11 @@ while True:
                     vk_session.method('messages.send', {'user_id': user_id, 'message': f'{random.choice(HELLO_PHRASES)}\n\nКстати, {random.choice(COMPLIMENTS)}', 'keyboard': get_main_keyboard(), 'random_id': 0})
                 elif 'колесо' in msg or msg == '🎲 ещё раз' or 'фортуны' in msg or 'рандом' in msg or 'не знаю' in msg:
                     handle_fortune(user_id)
-                elif msg == '🛒 где заказать' or 'заказ' in msg:
+                
+                # ИСПРАВЛЕНИЕ: Убрал общее слово 'заказ', чтобы бот не ловил "проблему с заказом"
+                elif msg == '🛒 где заказать' or 'как заказать' in msg or 'оформить заказ' in msg:
                     vk_session.method('messages.send', {'user_id': user_id, 'message': 'Заказать наши вкусняшки можно так:\n👇 Выбирай удобный способ!', 'keyboard': get_inline_keyboard(), 'random_id': 0})
+                
                 elif msg == '😋 что вкуснее?' or 'вкусн' in msg or 'посовет' in msg:
                     vk_session.method('messages.send', {'user_id': user_id, 'message': 'Если хочешь новое:\n1. Комбо курочка+подружка (1263 ₽) — взрыв курицы! 🍗\n2. Mac & Cheese Фрайс (419 ₽) — сыр, рожки и фри! 🧀\n3. Баскет Пэли мэни пакьяо (631 ₽)! 🥟\nОгонь! 🔥', 'random_id': 0})
                 elif msg == '🔥 что чаще берут?' or 'хит' in msg or 'популярн' in msg or 'берут' in msg:
@@ -538,14 +541,23 @@ while True:
                 elif 'крыл' in msg:
                     vk_session.method('messages.send', {'user_id': user_id, 'message': 'Крылышки! 🍗\n5 шт — 465 ₽, 10 шт — 899 ₽, 15 шт — 1302 ₽.', 'random_id': 0})
                 
-                # ЕСЛИ БОТ НЕ ПОНЯЛ (ДЛИННЫЕ СООБЩЕНИЯ -> К ЧЕЛОВЕКУ)
+                # ЕСЛИ БОТ НЕ ПОНЯЛ (УМНАЯ ОБРАБОТКА)
                 else:
-                    if len(msg) > 20:
+                    # Если сообщение короткое (например, точка или "ну"), не шутим, а зовем менеджера
+                    if len(msg) < 5:
+                        vk_session.method('messages.send', {
+                            'user_id': user_id,
+                            'message': 'Я не совсем понял твой вопрос. Если у тебя проблема с заказом, напиши нашему менеджеру: 👉 https://vk.com/write58971558',
+                            'random_id': 0
+                        })
+                    # Если сообщение длинное и сложное
+                    elif len(msg) > 20:
                         vk_session.method('messages.send', {
                             'user_id': user_id,
                             'message': 'Я пока не умею отвечать на такие сложные вопросы 😔. Пожалуйста, напиши нашему живому менеджеру: 👉 https://vk.com/write58971558',
                             'random_id': 0
                         })
+                    # Обычный непонятный текст
                     else:
                         bonus = random.choice(JOKES) if random.choice([True, False]) else random.choice(COMPLIMENTS)
                         vk_session.method('messages.send', {'user_id': user_id, 'message': f'{bonus}\n\n{random.choice(UNKNOWN_PHRASES)}', 'keyboard': get_main_keyboard(), 'random_id': 0})

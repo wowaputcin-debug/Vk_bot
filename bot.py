@@ -229,7 +229,7 @@ def send_welcome_to_new_subscriber(user_id):
         vk_session.method('messages.send', {
             'user_id': user_id,
             'message': welcome_text,
-            'intent': 'subscribed',
+            'intent': 'confirmed_notification',  # <-- ИСПРАВЛЕНА ОШИБКА ИЗ ЛОГОВ
             'random_id': 0
         })
         print(f"Приветствие отправлено: {user_id}")
@@ -303,7 +303,6 @@ PARTNERSHIP_RESPONSE = 'Спасибо за предложение! 🤝\n\nПо
 SPAM_RESPONSE = 'Ой, я бот и не разбираюсь в таких вопросах. 😅\n\nРеальные предложения — сюда:\n👉 https://vk.com/write58971558'
 PROBLEM_RESPONSE = 'Ой, кажется, у тебя проблема с заказом! 😔\nПрости нас, пожалуйста. Я — всего лишь бот, и мне сложно разобраться в такой ситуации.\n\nПожалуйста, напиши нашему менеджеру напрямую, он всё решит в два счета:\n👉 https://vk.com/write58971558\n\nОбещаем во всём разобраться! 🐔❤️'
 
-# ИСПРАВЛЕНИЕ: убрали короткое слово 'работ', чтобы бот не тупил на вопросе "работаете?"
 WORK_KEYWORDS = ['вакан', 'устро', 'резюме', 'трудоустро', 'зарплат', 'подработ', 'повар', 'курьер', 'ищу работу']
 PARTNERSHIP_KEYWORDS = ['сотруднич', 'партнер', 'партнёр', 'реклам', 'предложени', 'бартер', 'инвестиц', 'коллаб', 'продвижени', 'пиар']
 SPAM_KEYWORDS = ['крипт', 'биткоин', 'заработок', 'пассивный доход', 'трейдинг', 'казино', 'ставк', 'форекс', 'накрутк']
@@ -432,21 +431,23 @@ while True:
                 user_id = message_obj.get('from_id')
                 msg = message_obj.get('text', '').lower()
 
+                # ПРОВЕРКА СТИКЕРОВ И СТОРИС
                 attachments = message_obj.get('attachments', [])
                 has_story = any(att.get('type') == 'story' for att in attachments)
+                has_sticker = any(att.get('type') == 'sticker' for att in attachments)
 
-                if not msg and not has_story:
+                if not msg and not has_story and not has_sticker:
                     continue
 
-                print(f"💬 Сообщение от {user_id}: {msg if msg else '[Стикер/Сторис]'}")
+                print(f"💬 Сообщение от {user_id}: {msg if msg else '[Вложение: стикер/сторис]'}")
 
                 add_subscriber(user_id)
 
-                # Обработка ответа на сторис
-                if has_story and not msg:
+                # Обработка ответа на сторис или стикера
+                if (has_story or has_sticker) and not msg:
                     vk_session.method('messages.send', {
                         'user_id': user_id,
-                        'message': 'Ого, ты ответил на нашу сторис! 🎉 Спасибо! Жми кнопки ниже, чтобы заказать что-нибудь вкусное 👇',
+                        'message': 'Ого, ты отправил стикер или ответил на нашу сторис! 🎉 Спасибо! Жми кнопки ниже, чтобы заказать что-нибудь вкусное 👇',
                         'keyboard': get_main_keyboard(),
                         'random_id': 0
                     })
@@ -488,7 +489,7 @@ while True:
                     else:
                         vk_session.method('messages.send', {'user_id': user_id, 'message': 'Хм, а ты и так не подписан на рассылку 🤔\nНо раз уж написал — держи кнопки! 👇', 'keyboard': get_main_keyboard(), 'random_id': 0})
 
-                # --- ГРАФИК РАБОТЫ (НОВОЕ) ---
+                # --- ГРАФИК РАБОТЫ ---
                 elif any(w in msg for w in ['работаете', 'до скольки', 'во сколько', 'график', 'открыты', 'закрыты', 'обед']):
                     vk_session.method('messages.send', {
                         'user_id': user_id,
